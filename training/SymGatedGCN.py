@@ -18,6 +18,7 @@ class PairNorm(nn.Module):
         mean = x.mean(dim=0, keepdim=True)
         var = x.var(dim=0, keepdim=True, unbiased=False)
         x = (x - mean) / (var + 1e-8).sqrt() * self.scale
+        return x
 
 
 class SymGatedGCNModel(nn.Module):
@@ -136,6 +137,16 @@ class SymGatedGCN(nn.Module):
             # Forward-message passing
             g.apply_edges(fn.u_add_v('B1h', 'B2h', 'B12h'))
             e_ji = g.edata['B12h'] + g.edata['B3e']
+            
+            # Debug: Check if e_ji is None
+            if e_ji is None:
+                print(f"DEBUG: e_ji is None")
+                print(f"DEBUG: g.edata['B12h'] = {g.edata['B12h']}")
+                print(f"DEBUG: g.edata['B3e'] = {g.edata['B3e']}")
+                print(f"DEBUG: g.edata keys = {list(g.edata.keys())}")
+                print(f"DEBUG: g.ndata keys = {list(g.ndata.keys())}")
+                raise ValueError("e_ji is None - check edge data initialization")
+            
             e_ji = self.bn_e(e_ji)
             e_ji = F.relu(e_ji)
             if self.residual:
@@ -220,23 +231,3 @@ class ScorePredictor(nn.Module):
             graph.edata['e'] = e
             graph.apply_edges(self.apply_edges)
             return graph.edata['score']
-
-    def __init__(self, dim_latent, hidden_edge_scores, output_dim, dropout=0.0):
-        super().__init__()
-        self.W1 = nn.Linear(dim_latent, dim_latent)
-        self.W2 = nn.Linear(dim_latent, hidden_edge_scores)
-        self.W3 = nn.Linear(hidden_edge_scores, output_dim)
-        self.to_squeeze = output_dim == 1
-        self.dropout = nn.Dropout(p=dropout)
-
-    def forward(self, x):
-        h = self.W1(x)
-        h = torch.relu(h)
-        h = self.dropout(h)
-        h = self.W2(h)
-        h = torch.relu(h)
-        h = self.dropout(h)
-        score = self.W3(h)
-        if self.to_squeeze:
-            score = score.squeeze()
-        return score
