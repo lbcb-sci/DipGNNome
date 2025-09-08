@@ -9,64 +9,18 @@ class PairNorm(nn.Module):
     PairNorm normalization layer.
     Based on the paper: "PairNorm: Tackling Oversmoothing in GNNs"
     """
-    def __init__(self, mode='PN', scale=1.0):
+    def __init__(self,scale=1.0):
         super(PairNorm, self).__init__()
-        self.mode = mode
         self.scale = scale
 
     def forward(self, x):
-        if self.mode == 'PN':
-            # PairNorm: x_i = x_i - mean(x) / std(x) * scale
-            mean = x.mean(dim=0, keepdim=True)
-            var = x.var(dim=0, keepdim=True, unbiased=False)
-            x = (x - mean) / (var + 1e-8).sqrt() * self.scale
-        elif self.mode == 'PN-SI':
-            # PairNorm with scale-invariant: x_i = x_i - mean(x) / std(x) * scale
-            mean = x.mean(dim=0, keepdim=True)
-            var = x.var(dim=0, keepdim=True, unbiased=False)
-            x = (x - mean) / (var + 1e-8).sqrt() * self.scale
-        elif self.mode == 'PN-SCS':
-            # PairNorm with scale and shift: x_i = (x_i - mean(x)) / std(x) * scale + shift
-            mean = x.mean(dim=0, keepdim=True)
-            var = x.var(dim=0, keepdim=True, unbiased=False)
-            x = (x - mean) / (var + 1e-8).sqrt() * self.scale
-        return x
+        # PairNorm: x_i = x_i - mean(x) / std(x) * scale
+        mean = x.mean(dim=0, keepdim=True)
+        var = x.var(dim=0, keepdim=True, unbiased=False)
+        x = (x - mean) / (var + 1e-8).sqrt() * self.scale
+
 
 class SymGatedGCNModel(nn.Module):
-    def __init__(self, node_features, edge_features, hidden_features, hidden_edge_features, num_layers,
-                 hidden_edge_scores, nb_pos_enc, nr_classes=1, dropout=None, strand_change_head=False, pred_dropout=0, norm='layer'):
-        super().__init__()
-        hidden_node_features = hidden_edge_features
-        self.linear1_node = nn.Linear(node_features, hidden_node_features)
-        self.linear2_node = nn.Linear(hidden_node_features, hidden_features)
-        self.linear1_edge = nn.Linear(edge_features, hidden_edge_features)
-        self.linear2_edge = nn.Linear(hidden_edge_features, hidden_features)
-        self.gnn = SymGatedGCN_processor(num_layers, hidden_features, dropout=dropout, norm=norm)
-        self.predictor = ScorePredictor(hidden_features, hidden_edge_scores, nr_classes, dropout=pred_dropout)
-        #self.predictor = ScorePredictor_direct(hidden_features, hidden_edge_scores, nr_classes, dropout=pred_dropout)
-
-        self.strand_change_head = strand_change_head
-        if self.strand_change_head:
-            self.strand_change_predictor = ScorePredictor(hidden_features, hidden_edge_scores, 1, dropout=pred_dropout)
-    def forward(self, graph, x, e_):
-        x = self.linear1_node(x)
-        x = torch.relu(x)
-        x = self.linear2_node(x)
-
-        e = self.linear1_edge(e_)
-        e = torch.relu(e)
-        e = self.linear2_edge(e)
-
-        x, e = self.gnn(graph, x, e)
-        scores = self.predictor(graph, x, e) #, e_
-        if self.strand_change_head:
-            strand_change_scores = self.strand_change_predictor(graph, x, e)
-            return scores, strand_change_scores
-        else:
-            return scores, None
-
-
-class SymGatedGCNModelDoubleHead(nn.Module):
     """
     SymGatedGCN model with two separate heads for gt_bin and malicious prediction.
     """
@@ -101,118 +55,6 @@ class SymGatedGCNModelDoubleHead(nn.Module):
         
         return gt_bin_scores, malicious_scores
 
-class SymGatedGCNModel_direct(nn.Module):
-    def __init__(self, node_features, edge_features, hidden_features, hidden_edge_features, num_layers,
-                 hidden_edge_scores, nb_pos_enc, nr_classes=1, dropout=None, strand_change_head=False, pred_dropout=0, norm='layer'):
-        super().__init__()
-        hidden_node_features = hidden_edge_features
-        self.linear1_node = nn.Linear(node_features, hidden_node_features)
-        self.linear2_node = nn.Linear(hidden_node_features, hidden_features)
-        self.linear1_edge = nn.Linear(edge_features, hidden_edge_features)
-        self.linear2_edge = nn.Linear(hidden_edge_features, hidden_features)
-        self.gnn = SymGatedGCN_processor(num_layers, hidden_features, dropout=dropout, norm=norm)
-        self.predictor = ScorePredictor_direct(hidden_features, hidden_edge_scores, nr_classes, dropout=pred_dropout)
-
-        self.strand_change_head = strand_change_head
-        if self.strand_change_head:
-            self.strand_change_predictor = ScorePredictor(hidden_features, hidden_edge_scores, 1, dropout=pred_dropout)
-    def forward(self, graph, x, e_, x_full, e_full):
-        x = self.linear1_node(x)
-        x = torch.relu(x)
-        x = self.linear2_node(x)
-
-        e = self.linear1_edge(e_)
-        e = torch.relu(e)
-        e = self.linear2_edge(e)
-
-        x, e = self.gnn(graph, x, e)
-        scores = self.predictor(graph, x, e, x_full, e_full) #, e_
-        if self.strand_change_head:
-            strand_change_scores = self.strand_change_predictor(graph, x, e)
-            return scores, strand_change_scores
-        else:
-            return scores, None
-        
-class CutGatedGCNModel_(nn.Module):
-    def __init__(self, node_features, edge_features, hidden_features, hidden_edge_features, num_layers,
-                 hidden_edge_scores, nb_pos_enc, nr_classes=1, dropout=None, strand_change_head=False, pred_dropout=0, norm='layer'):
-        super().__init__()
-        hidden_node_features = hidden_edge_features
-        self.linear1_node = nn.Linear(node_features, hidden_node_features)
-        self.linear2_node = nn.Linear(hidden_node_features, hidden_features)
-        self.linear1_edge = nn.Linear(edge_features, hidden_edge_features)
-        self.linear2_edge = nn.Linear(hidden_edge_features, hidden_features)
-        self.gnn = SymGatedGCN_processor(num_layers, hidden_features, dropout=dropout, norm=norm)
-        self.cut_predictor = ScorePredictor(hidden_features, hidden_edge_scores, 1, dropout=pred_dropout)
-        self.bs_predictor = ScorePredictor(hidden_features, hidden_edge_scores, 1, dropout=pred_dropout)
-
-    def forward(self, graph, x, e_):
-        x = self.linear1_node(x)
-        x = torch.relu(x)
-        x = self.linear2_node(x)
-
-        e = self.linear1_edge(e_)
-        e = torch.relu(e)
-        e = self.linear2_edge(e)
-
-        x, e = self.gnn(graph, x, e)
-        cut_pred = self.cut_predictor(graph, x, e) #, e_
-        bs_pred = self.bs_predictor(graph, x, e) #, e_
-        return cut_pred, bs_pred
-
-
-class CutGatedGCNModel_2(nn.Module):
-    def __init__(self, node_features, edge_features, hidden_features, hidden_edge_features, num_layers,
-                 hidden_edge_scores, nb_pos_enc, nr_classes=1, dropout=None, strand_change_head=False, pred_dropout=0, norm='layer'):
-        super().__init__()
-        hidden_node_features = hidden_edge_features
-        self.linear1_node = nn.Linear(node_features, hidden_node_features)
-        self.linear2_node = nn.Linear(hidden_node_features, hidden_features)
-        self.linear1_edge = nn.Linear(edge_features, hidden_edge_features)
-        self.linear2_edge = nn.Linear(hidden_edge_features, hidden_features)
-        self.gnn = SymGatedGCN_processor(num_layers, hidden_features, dropout=dropout, norm=norm)
-        self.predictor = ScorePredictor(hidden_features, hidden_edge_scores, 2, dropout=pred_dropout)
-
-    def forward(self, graph, x, e_):
-        x = self.linear1_node(x)
-        x = torch.relu(x)
-        x = self.linear2_node(x)
-
-        e = self.linear1_edge(e_)
-        e = torch.relu(e)
-        e = self.linear2_edge(e)
-
-        x, e = self.gnn(graph, x, e)
-        pred = self.predictor(graph, x, e) #, e_
-        return pred
-    
-
-class CutGatedGCNModel(nn.Module):
-    def __init__(self, node_features, edge_features, hidden_features, hidden_edge_features, num_layers,
-                 hidden_edge_scores, nb_pos_enc, nr_classes=1, dropout=None, strand_change_head=False, pred_dropout=0, norm='layer'):
-        super().__init__()
-        hidden_node_features = hidden_edge_features
-        self.linear1_node = nn.Linear(node_features, hidden_node_features)
-        self.linear2_node = nn.Linear(hidden_node_features, hidden_features)
-        self.linear1_edge = nn.Linear(edge_features, hidden_edge_features)
-        self.linear2_edge = nn.Linear(hidden_edge_features, hidden_features)
-        self.gnn = SymGatedGCN_processor(num_layers, hidden_features, dropout=dropout, norm=norm)
-        self.predictor = ScorePredictor(hidden_features, hidden_edge_scores, 3, dropout=pred_dropout)
-
-    def forward(self, graph, x, e_):
-        x = self.linear1_node(x)
-        x = torch.relu(x)
-        x = self.linear2_node(x)
-
-        e = self.linear1_edge(e_)
-        e = torch.relu(e)
-        e = self.linear2_edge(e)
-
-        x, e = self.gnn(graph, x, e)
-        pred = self.predictor(graph, x, e) #, e_
-
-        return pred
-
 
 class SymGatedGCN_processor(nn.Module):
     def __init__(self, num_layers, hidden_features, dropout=None, norm='layer'):
@@ -225,7 +67,6 @@ class SymGatedGCN_processor(nn.Module):
         for i in range(len(self.convs)):
             h, e = self.convs[i](graph, h, e)
         return h, e
-
 
 class SymGatedGCN(nn.Module):
     """
@@ -266,14 +107,9 @@ class SymGatedGCN(nn.Module):
             self.bn_h = nn.LayerNorm(out_channels)
             self.bn_e = nn.LayerNorm(out_channels)
         elif norm == 'pair':
-            self.bn_h = PairNorm(mode='PN', scale=1.0)
-            self.bn_e = PairNorm(mode='PN', scale=1.0)
-        elif norm == 'pair_si':
-            self.bn_h = PairNorm(mode='PN-SI', scale=1.0)
-            self.bn_e = PairNorm(mode='PN-SI', scale=1.0)
-        elif norm == 'pair_scs':
-            self.bn_h = PairNorm(mode='PN-SCS', scale=1.0)
-            self.bn_e = PairNorm(mode='PN-SCS', scale=1.0)
+            self.bn_h = PairNorm(scale=1.0)
+            self.bn_e = PairNorm(scale=1.0)
+
         else:
             raise ValueError(f"Unsupported normalization type: {norm}. Use 'batch', 'layer', 'pair', 'pair_si', or 'pair_scs'")
     def forward(self, g, h, e):
@@ -385,49 +221,6 @@ class ScorePredictor(nn.Module):
             graph.apply_edges(self.apply_edges)
             return graph.edata['score']
 
-class ScorePredictor_direct(nn.Module):
-    def __init__(self, in_features, hidden_edge_scores, nr_classes, edge_ftrs_dim=4, dropout=0.0):
-        super().__init__()
-        # Store edge features dimension and make input size flexible
-        self.edge_ftrs_dim = edge_ftrs_dim
-        self.W1 = nn.Linear((3 * in_features) + 2 * 10 + 2, hidden_edge_scores)
-        #self.Wa = nn.Linear(hidden_edge_scores, hidden_edge_scores)
-        #self.Wb = nn.Linear(hidden_edge_scores, hidden_edge_scores)
-        self.W2 = nn.Linear(hidden_edge_scores, 32)
-        self.W3 = nn.Linear(32, nr_classes)
-        self.dropout = nn.Dropout(p=dropout)
-
-    def apply_edges(self, edges):
-        # Concatenate the original data with the additional edge features
-        data = torch.cat((edges.src['x'], edges.dst['x'], edges.data['e'], edges.src['nodeftrs'], edges.dst['nodeftrs'], edges.data['edgeftrs']), dim=1)
-        h = self.W1(data)
-        h = torch.relu(h)
-        h = self.dropout(h)
-        #####
-        """h = self.Wa(h)
-        h = torch.relu(h)
-        h = self.dropout(h)
-        h = self.Wb(h)
-        h = torch.relu(h)
-        h = self.dropout(h)"""
-        #####
-        h = self.W2(h)
-        h = torch.relu(h)
-        h = self.dropout(h)
-        score = self.W3(h)
-        #score = self.act(score)
-        return {'score': score}
-
-    def forward(self, graph, x, e, nodeftrs, edgeftrs):
-        with graph.local_scope():
-            graph.ndata['x'] = x
-            graph.edata['e'] = e
-            graph.ndata['nodeftrs'] = nodeftrs
-            graph.edata['edgeftrs'] = edgeftrs
-            graph.apply_edges(self.apply_edges)
-            return graph.edata['score']
-
-class StopNodePredictor(nn.Module):
     def __init__(self, dim_latent, hidden_edge_scores, output_dim, dropout=0.0):
         super().__init__()
         self.W1 = nn.Linear(dim_latent, dim_latent)
@@ -447,75 +240,3 @@ class StopNodePredictor(nn.Module):
         if self.to_squeeze:
             score = score.squeeze()
         return score
-
-class YakSymGatedGCNModel(nn.Module):
-    def __init__(self, node_features, edge_features, hidden_features, hidden_edge_features, num_layers,
-                 hidden_edge_scores, nb_pos_enc, nr_classes=1, dropout=None, stop_head=False, norm='layer'):
-        super().__init__()
-        hidden_node_features = hidden_edge_features
-        self.linear1_node = nn.Linear(node_features, hidden_node_features)
-        self.linear2_node = nn.Linear(hidden_node_features, hidden_features)
-        self.linear1_edge = nn.Linear(edge_features, hidden_edge_features)
-        self.linear2_edge = nn.Linear(hidden_edge_features, hidden_features)
-        self.gnn = SymGatedGCN_processor(num_layers, hidden_features, dropout=dropout, norm=norm)
-        self.predictor = YakNodePredictor(hidden_features, hidden_edge_scores)
-
-    def forward(self, graph, x, e):
-        x = self.linear1_node(x)
-        x = torch.relu(x)
-        x = self.linear2_node(x)
-
-        e = self.linear1_edge(e)
-        e = torch.relu(e)
-        e = self.linear2_edge(e)
-
-        x, e = self.gnn(graph, x, e)
-        scores = self.predictor(x)
-
-        return scores
-
-
-class SymGatedGCNYakModel(nn.Module):
-    def __init__(self, node_features, edge_features, hidden_features, hidden_edge_features, num_layers,
-                 hidden_edge_scores, nb_pos_enc, nr_classes=1, dropout=None, stop_head=False,
-                 pred_dropout=0, norm='layer'):
-        super().__init__()
-        hidden_node_features = hidden_edge_features
-        self.linear1_node = nn.Linear(node_features, hidden_node_features)
-        self.linear2_node = nn.Linear(hidden_node_features, hidden_features)
-        self.linear1_edge = nn.Linear(edge_features, hidden_edge_features)
-        self.linear2_edge = nn.Linear(hidden_edge_features, hidden_features)
-        self.gnn = SymGatedGCN_processor(num_layers, hidden_features, dropout=dropout, norm=norm)
-
-        self.predictor = YakNodePredictor(hidden_features, hidden_edge_scores, dropout=pred_dropout)
-
-    def forward(self, graph, x, e):
-        x = self.linear1_node(x)
-        x = torch.relu(x)
-        x = self.linear2_node(x)
-
-        e = self.linear1_edge(e)
-        e = torch.relu(e)
-        e = self.linear2_edge(e)
-
-        x, e = self.gnn(graph, x, e)
-        scores = self.predictor(x)
-        return scores
-
-class YakNodePredictor(nn.Module):
-    def __init__(self, dim_latent, hidden_edge_scores, dropout=0.0):
-        super().__init__()
-        self.W1 = nn.Linear(dim_latent, dim_latent)
-        self.W2 = nn.Linear(dim_latent, hidden_edge_scores)
-        self.W3 = nn.Linear(hidden_edge_scores, 1)
-
-        self.dropout = nn.Dropout(p=dropout)
-    def forward(self, x):
-        h = self.W1(x)
-        h = torch.relu(h)
-        h = self.dropout(h)
-        h = self.W2(h)
-        h = torch.relu(h)
-        h = self.dropout(h)
-        scores = self.W3(h)
-        return scores
