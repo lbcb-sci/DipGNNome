@@ -19,8 +19,6 @@ import yaml
 import argparse
 from pyliftover import LiftOver
 
-from data_gen_utils import create_full_dataset_dict
-
 class DatasetCreator:
     def __init__(self, ref_path, dataset_path, data_config='dataset.yml'):
         with open(data_config) as file:
@@ -3111,6 +3109,27 @@ class DatasetCreator:
                 print(f"    importance_weight {weight_val}: {count} edges ({percentage:.1f}%)")
         
         print(f"All attributes should now be callable by name in the DGL graphs.")
+
+
+def create_full_dataset_dict(config):
+
+    train_dataset = config['training']
+    val_dataset = config['validation']
+
+    # Initialize the full_dataset dictionary
+    full_dataset = {}
+    # Add all keys and values from train_dataset to full_dataset
+    for key, value in train_dataset.items():
+        full_dataset[key] = value
+    # Add keys from val_dataset to full_dataset, summing values if key already exists
+    if val_dataset is not None:
+        for key, value in val_dataset.items():
+            if key in full_dataset:
+                full_dataset[key] += value
+            else:
+                full_dataset[key] = value
+
+    return full_dataset
 
 def main():
     parser = argparse.ArgumentParser(description="Generate dataset based on configuration")
