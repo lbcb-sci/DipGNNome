@@ -430,7 +430,7 @@ if __name__ == '__main__':
         node_features = config['node_features']
         edge_features = config['edge_features']
 
-    model = SymGatedGCNModelDoubleHead(
+    model = SymGatedGCNModel(
         node_features,
         edge_features,
         config['hidden_features'],
