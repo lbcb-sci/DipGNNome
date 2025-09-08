@@ -1,0 +1,43 @@
+decoding:
+  num_decoding_paths: 1
+  decode_with_labels: False
+  load_checkpoint: True
+  num_threads: 32
+  B: 1
+  len_threshold: 500000
+  strategy: greedy
+  cut_edge_thr: 1.0
+
+training:
+  seed: 1
+  num_epochs: 200
+  num_gnn_layers: 8
+  hidden_features: 512
+  nb_pos_enc: 0
+  patience: 2
+  lr: 0.0001
+  sym_loss_constant: 0.01
+  aux_loss_constant: 0.001
+  margin: 1
+  norm: 'pair'  # Options: 'layer', 'batch', 'pair', 'pair_si', 'pair_scs'
+  strand_change_head: False
+  strand_change_alpha: 0.1
+  node_features: 4
+  edge_features: 1
+  hidden_edge_features: 16
+  hidden_edge_scores: 64
+  decay: 0.95
+  wandb_mode: 'offline'
+  num_nodes_per_cluster: 50000
+  npc_lower_bound: 1
+  npc_upper_bound: 1
+  k_extra_hops: 1
+  mask_frac_low: 80
+  mask_frac_high: 100
+  dropout: 0.2
+  pred_dropout: 0.0
+  nr_classes: 1
+paths:
+  minigraph_path: '/home/schmitzmf/minigraph/minigraph'
+  paftools_path: '/home/schmitzmf/minimap2/misc/paftools.js'
+  yak_path: '/home/schmitzmf/yak/yak'
