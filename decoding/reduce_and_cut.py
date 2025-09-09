@@ -39,7 +39,6 @@ def reduction(nx_graph, config, diploid, symmetry=True, reduce_complements=True)
     score_attr = config['reduction_score']
     cut_higher_than = config['cut_higher_than']
     
-    print(f"Reduce graph with strategy {strategy}")
     print(f"Before, graph: {nx_graph.number_of_nodes():,} nodes, {nx_graph.number_of_edges():,} edges")
     
     # Store the original edge count
