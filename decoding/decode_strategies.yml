@@ -17,6 +17,7 @@ beam:
   
   cut_higher_than: 0.5
   
+  
   min_component_size: 25
   min_walk_length: 100000
   min_path_length: 25
