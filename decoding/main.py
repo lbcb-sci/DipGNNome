@@ -22,9 +22,6 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from training.utils import set_seed
 from training.SymGatedGCN import SymGatedGCNModel
 
-stds_and_means = STDS_AND_MEANS
-
-
 def get_timestamp():
     """Return a formatted timestamp string."""
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
