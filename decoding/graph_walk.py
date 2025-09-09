@@ -100,6 +100,117 @@ def compute_graph_wrong_kmer_fraction(nx_graph, hap):
     
     return wrong_kmer_fraction
 
+def sample_edges(nx_graph, hap, sample_size, sampling_by_score=False, score_attr='score', largest_component_only=False):
+    """Sample edges from the graph, either randomly or weighted by score.
+    
+    Args:
+        nx_graph: NetworkX graph
+        hap: Target haplotype ('m' or 'p' or None)
+        sample_size: Number of edges to sample
+        sampling_by_score: If True, sample proportional to edge score; if False, sample uniformly at random
+        score_attr: Edge attribute to use for scoring when sampling_by_score=True
+        largest_component_only: If True, only sample from largest connected component; if False, sample from full graph
+    
+    Returns:
+        list: Sampled edges
+    """
+    # Get all edges
+    all_edges = list(nx_graph.edges())
+    
+    # Filter edges based on haplotype
+    if hap is not None:
+        filtered_edges = []
+        for src, dst in all_edges:
+            if nx_graph.nodes[src][f'yak_{hap}'] != -1 and nx_graph.nodes[dst][f'yak_{hap}'] != -1:
+                    filtered_edges.append((src, dst))
+
+    else:
+        filtered_edges = all_edges
+    
+    # If no edges after filtering, return empty list
+    if not filtered_edges:
+        return []
+    
+    # Determine which edges to sample from
+    if largest_component_only:
+        # Find connected components and identify the largest one
+        print("Analyzing graph components for edge sampling...")
+        
+        # Use appropriate component finding method based on graph type
+        components = list(nx.weakly_connected_components(nx_graph))
+        
+        print(f"Found {len(components)} connected components")
+        
+        if len(components) == 0:
+            return []
+        
+        # Find the largest component by accumulated read length
+        def component_read_length(component):
+            return sum(nx_graph.nodes[node]['read_length'] for node in component)
+        largest_component = max(components, key=component_read_length)
+        largest_component_size = len(largest_component)
+        
+        # Print component statistics
+        component_sizes = [len(comp) for comp in components]
+        print(f"Component sizes: min={min(component_sizes)}, max={max(component_sizes)}, average={sum(component_sizes)/len(component_sizes):.1f}")
+        print(f"Largest component has {largest_component_size} nodes ({largest_component_size/nx_graph.number_of_nodes()*100:.1f}% of total)")
+        
+        # Filter edges to only include those within the largest component
+        component_edges = []
+        for src, dst in filtered_edges:
+            if src in largest_component and dst in largest_component:
+                component_edges.append((src, dst))
+        
+        print(f"Filtered edges: {len(filtered_edges)} -> {len(component_edges)} (kept {len(component_edges)/len(filtered_edges)*100:.1f}% within largest component)")
+        
+        # If no edges in largest component, return empty list
+        if not component_edges:
+            return []
+        
+        edges_to_sample = component_edges
+    else:
+        # Use all filtered edges (no component filtering)
+        print(f"Sampling from full graph: {len(filtered_edges)} edges available")
+        edges_to_sample = filtered_edges
+    
+    # Sample from selected edges
+    if sampling_by_score:
+
+        # Score-based sampling
+        # Get scores for each edge, filtering out edges with score 0
+        edge_scores = []
+        valid_edges = []
+        for src, dst in edges_to_sample:
+            score = nx_graph[src][dst].get(score_attr, 0)
+            if score > 0:  # Only include edges with positive scores
+                edge_scores.append(score)
+                valid_edges.append((src, dst))
+        
+        # If no valid edges with positive scores, return empty list
+        if not valid_edges:
+            return []
+        
+        # Sample edges proportional to their scores
+        if len(valid_edges) <= sample_size:
+            sampled_edges = valid_edges
+        else:
+            # Normalize scores to probabilities
+            total_score = sum(edge_scores)
+            probabilities = [score/total_score for score in edge_scores]
+            
+            # Sample without replacement
+            indices = random.choices(range(len(valid_edges)), weights=probabilities, k=sample_size)
+            sampled_edges = [valid_edges[i] for i in indices]
+    else:
+        # Uniform random sampling
+        if len(edges_to_sample) <= sample_size:
+            sampled_edges = edges_to_sample
+        else:
+            sampled_edges = random.sample(edges_to_sample, sample_size)
+
+    return sampled_edges
+
+
 def merge_beams(beam1, beam2, common_node, nx_graph, score_attr='score', beam_score_shift=0.5, edge_penalty=100, kmer_penalty_factor=1, hap=None, graphic_preds=None, use_hifiasm_result=False, wrong_kmer_fraction=None):
     
     """
