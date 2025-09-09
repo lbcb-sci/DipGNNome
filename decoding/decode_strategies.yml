@@ -24,6 +24,7 @@ beam:
   penalty_wrong_hap: 1
   penalty_ambiguous: 0.2
   hap_length_penalty: 1  #only for dag longest walk
+  select_walk: 'longest' #'longest'
 
 
 
@@ -40,7 +41,6 @@ beam:
   min_walk_length: 100000
   min_path_length: 25
 
-  select_walk: 'longest' #'longest'
   beam_width: 10
   beam_intermediate: True
 

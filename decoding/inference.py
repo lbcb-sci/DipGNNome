@@ -1,5 +1,4 @@
 import networkx as nx
-
 import reduce_and_cut
 import graph_walk
 import mark_as_visited
