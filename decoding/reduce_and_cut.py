@@ -46,10 +46,6 @@ def reduction(nx_graph, config, diploid, symmetry=True, reduce_complements=True)
     edges_before = nx_graph.number_of_edges()
     nx_graph = cut_with_threshold(nx_graph, prob_threshold=cut_higher_than, score_attr=score_attr, higher_means_correct=False)
 
-    else: 
-        raise ValueError(f"Invalid reduction strategy: {strategy}")
-    
-
     if symmetry:
         # Count edges after reduction but before handling complements
         edges_after_reduction = nx_graph.number_of_edges()
