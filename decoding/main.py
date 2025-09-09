@@ -430,7 +430,7 @@ def main_entry(argv=None):
     
     parser = argparse.ArgumentParser(description='Compute edge scores for a graph')
     parser.add_argument('--model', type=str, help='Path to the trained model')
-    parser.add_argument('--strategy_config', type=str, default='decoding_mod/decode_strategies.yml', help='Path to the config file')
+    parser.add_argument('--strategy_config', type=str, default='decoding/decode_strategies.yml', help='Path to the config file')
     parser.add_argument('--config', type=str, default='configs/config.yml', help='Path to the config file')
     parser.add_argument('--strategy', type=str, default='baseline', help='Strategy for graph reduction')
     
