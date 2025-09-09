@@ -2,8 +2,6 @@ from tqdm import tqdm
 import random
 import networkx as nx
 import numpy as np
-from dijkstra import dijkstra, graphic_dijkstra, default_dijkstra
-from dijkstra import precompute_edge_weights, precompute_graphic_edge_weights, default_dijkstra_graphic
 
 def sample_edges(nx_graph, hap, sample_size, sampling_by_score=False, score_attr='score', largest_component_only=False):
     """Sample edges from the graph, either randomly or weighted by score.
