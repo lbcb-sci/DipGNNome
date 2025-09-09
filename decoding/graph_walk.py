@@ -3,58 +3,55 @@ import random
 import networkx as nx
 import numpy as np
 
-def compute_beam_edge_score(nx_graph, src, dst, data, hap=None,
-                           beam_score_shift=0.5, edge_penalty=100, 
-                           kmer_penalty_factor=1, graphic_preds=None, use_hifiasm_result=False,
-                           wrong_kmer_fraction=None,
-                           alpha=0.00001, beta=10, gamma=10, delta=None, thr_graphic=None):
+def compute_beam_edge_score(nx_graph, src, dst, data, hap=None, graphic_preds=None,
+                           alpha=0.00001, beta=10, gamma=10, thr_graphic=None):
     """
-    Compute edge score using an alternative beam search heuristic with logarithmic scaling.
+    Compute edge score using beam search heuristic.
+    
+    Args:
+        nx_graph: NetworkX graph
+        src: Source node
+        dst: Destination node  
+        data: Edge data dictionary
+        hap: Target haplotype ('m' or 'p')
+        graphic_preds: Optional dictionary of graphic predictions for nodes
+        alpha: Length reward factor
+        beta: Wrong haplotype penalty factor
+        gamma: Edge score penalty factor
+        thr_graphic: Threshold for graphic predictions
+        
+    Returns:
+        float: Computed beam score
     """
+    # Constants
+    LOW_EDGE_SCORE_PENALTY = 1000000
+    LOW_EDGE_SCORE_THRESHOLD = 0.1
     
     # Calculate node length (sequence length added to assembly)
     node_length = nx_graph.nodes[dst]['read_length'] - data['overlap_length']
     read_add_length = node_length / nx_graph.nodes[dst]['read_length']
 
-    # Calculate wrong kmer count for the target haplotype
+    # Calculate wrong haplotype penalty
     if graphic_preds is None:
         not_hap = 'm' if hap == 'p' else 'p'
-        """yak_score = nx_graph.nodes[dst][f'yak_{not_hap}']
-        wrong_kmer_count = 1 if yak_score == 1 else 0"""
         wrong_kmer_count = nx_graph.nodes[dst][f'kmer_count_{not_hap}']
-        correct_kmer_count = nx_graph.nodes[dst][f'kmer_count_{hap}']
         wrong_hap_penalty = beta * wrong_kmer_count * read_add_length
     else:
-        # Calculate wrong kmer count for the target haplotype
-        
         if graphic_preds[dst] < -thr_graphic:
-            wrong_hap_penalty =  - graphic_preds[dst] * beta
+            wrong_hap_penalty = -graphic_preds[dst] * beta
         else:
             wrong_hap_penalty = 0
     
-    # Get edge score (bounded in [0, 1])
+    # Calculate edge score components
     edge_score = data['score']
-    
-    # Apply the formula: α⋅log(L(n)+1) − β⋅log(W(n)+1) + γ⋅S(e)
-    """length_reward = alpha * np.log(node_length)
-    wrong_kmer_penalty = beta * np.log(wrong_kmer_count*1000 * read_add_length+ 1)
-    edge_score_component = gamma * (1 - edge_score) **2"""
-
     length_reward = alpha * node_length
-    
-    #correct_kmer_reward = delta * correct_kmer_count * read_add_length #and beta=3
-    #correct_kmer_reward = delta * (correct_kmer_count*1000 * read_add_length)**2
-    edge_score_component = (gamma * (1 - edge_score)) **2
+    edge_score_component = (gamma * (1 - edge_score)) ** 2
 
-    if edge_score<0.1:
-        edge_score_component = 1000000
-    #if wrong_kmer_count*1000*read_add_length > 10000:
-    #    wrong_kmer_penalty = 1000000
-    #print(wrong_kmer_penalty)
-    #print(wrong_kmer_count)
-    #print(length_reward, wrong_kmer_penalty, edge_score_component)
+    # Apply heavy penalty for very low edge scores
+    if edge_score < LOW_EDGE_SCORE_THRESHOLD:
+        edge_score_component = LOW_EDGE_SCORE_PENALTY
 
-    beam_score = length_reward - wrong_hap_penalty - edge_score_component # + correct_kmer_reward
+    beam_score = length_reward - wrong_hap_penalty - edge_score_component
     
     return beam_score
 
@@ -202,7 +199,7 @@ def sample_edges(nx_graph, hap, sample_size, sampling_by_score=False, score_attr
     return sampled_edges
 
 
-def merge_beams(beam1, beam2, common_node, nx_graph, score_attr='score', beam_score_shift=0.5, edge_penalty=100, kmer_penalty_factor=1, hap=None, graphic_preds=None, use_hifiasm_result=False, wrong_kmer_fraction=None, alpha=0.00001, beta=10, gamma=10, delta=None, thr_graphic=None):
+def merge_beams(beam1, beam2, common_node, nx_graph, score_attr='score', hap=None, graphic_preds=None, alpha=0.00001, beta=10, gamma=10, thr_graphic=None):
     
     """
     Merge two beams that share a common node.
@@ -253,13 +250,8 @@ def merge_beams(beam1, beam2, common_node, nx_graph, score_attr='score', beam_sc
                 
                 # Use consistent scoring function
                 edge_score = compute_beam_edge_score(nx_graph, src, dst, edge_data, hap=hap, 
-                                                   beam_score_shift=beam_score_shift, 
-                                                   edge_penalty=edge_penalty, 
-                                                   kmer_penalty_factor=kmer_penalty_factor, 
                                                    graphic_preds=graphic_preds,
-                                                   use_hifiasm_result=use_hifiasm_result,
-                                                   wrong_kmer_fraction=wrong_kmer_fraction,
-                                                   alpha=alpha, beta=beta, gamma=gamma, delta=delta, thr_graphic=thr_graphic)
+                                                   alpha=alpha, beta=beta, gamma=gamma, thr_graphic=thr_graphic)
                 
                 beam2_score_to_node += edge_score
                 beam2_path_length_to_node += edge_data['prefix_length']
@@ -294,13 +286,8 @@ def merge_beams(beam1, beam2, common_node, nx_graph, score_attr='score', beam_sc
                         
                         # Use consistent scoring function
                         edge_score = compute_beam_edge_score(nx_graph, src, dst, edge_data, hap=hap, 
-                                                   beam_score_shift=beam_score_shift, 
-                                                   edge_penalty=edge_penalty, 
-                                                   kmer_penalty_factor=kmer_penalty_factor, 
                                                    graphic_preds=graphic_preds,
-                                                   use_hifiasm_result=use_hifiasm_result,
-                                                   wrong_kmer_fraction=wrong_kmer_fraction,
-                                                   alpha=alpha, beta=beta, gamma=gamma, delta=delta, thr_graphic=thr_graphic)
+                                                   alpha=alpha, beta=beta, gamma=gamma, thr_graphic=thr_graphic)
                         
                         merged_total_score += edge_score
                         merged_path_length += edge_data['prefix_length']
@@ -322,13 +309,8 @@ def merge_beams(beam1, beam2, common_node, nx_graph, score_attr='score', beam_sc
                 
                 # Use consistent scoring function
                 edge_score = compute_beam_edge_score(nx_graph, src, dst, edge_data, hap=hap, 
-                                                   beam_score_shift=beam_score_shift, 
-                                                   edge_penalty=edge_penalty, 
-                                                   kmer_penalty_factor=kmer_penalty_factor, 
                                                    graphic_preds=graphic_preds,
-                                                   use_hifiasm_result=use_hifiasm_result,
-                                                   wrong_kmer_fraction=wrong_kmer_fraction,
-                                                   alpha=alpha, beta=beta, gamma=gamma, delta=delta, thr_graphic=thr_graphic)
+                                                   alpha=alpha, beta=beta, gamma=gamma, thr_graphic=thr_graphic)
                 
                 beam1_score_to_node += edge_score
                 beam1_path_length_to_node += edge_data['prefix_length']
@@ -363,13 +345,8 @@ def merge_beams(beam1, beam2, common_node, nx_graph, score_attr='score', beam_sc
                         
                         # Use consistent scoring function
                         edge_score = compute_beam_edge_score(nx_graph, src, dst, edge_data, hap=hap, 
-                                                   beam_score_shift=beam_score_shift, 
-                                                   edge_penalty=edge_penalty, 
-                                                   kmer_penalty_factor=kmer_penalty_factor, 
                                                    graphic_preds=graphic_preds,
-                                                   use_hifiasm_result=use_hifiasm_result,
-                                                   wrong_kmer_fraction=wrong_kmer_fraction,
-                                                   alpha=alpha, beta=beta, gamma=gamma, delta=delta, thr_graphic=thr_graphic)
+                                                   alpha=alpha, beta=beta, gamma=gamma, thr_graphic=thr_graphic)
                         
                         merged_total_score += edge_score
                         merged_path_length += edge_data['prefix_length']
@@ -385,7 +362,7 @@ def merge_beams(beam1, beam2, common_node, nx_graph, score_attr='score', beam_sc
         return beam2
 
 
-def walk_beamsearch(nx_graph, start_node, hap=None, score_attr='score', beam_width=3, beam_score_shift=0.5, edge_penalty=100, kmer_penalty_factor=1, use_best_intermediate=True, visited=None, graphic_preds=None, use_hifiasm_result=False, alpha=0.00001, beta=10, gamma=10, delta=None, thr_graphic=None):
+def walk_beamsearch(nx_graph, start_node, hap=None, score_attr='score', beam_width=3, use_best_intermediate=True, visited=None, graphic_preds=None, alpha=0.00001, beta=10, gamma=10, thr_graphic=None):
     """Find a path through the graph using beam search from a given start node.
     
     Args:
@@ -478,13 +455,8 @@ def walk_beamsearch(nx_graph, start_node, hap=None, score_attr='score', beam_wid
             scored_edges = []
             for src, dst, data in valid_edges:
                 edge_score = compute_beam_edge_score(nx_graph, src, dst, data, hap=hap,
-                                                   beam_score_shift=beam_score_shift,
-                                                   edge_penalty=edge_penalty,
-                                                   kmer_penalty_factor=kmer_penalty_factor,
                                                    graphic_preds=graphic_preds,
-                                                   use_hifiasm_result=use_hifiasm_result,
-                                                   wrong_kmer_fraction=wrong_kmer_fraction,
-                                                   alpha=alpha, beta=beta, gamma=gamma, delta=delta, thr_graphic=thr_graphic)
+                                                   alpha=alpha, beta=beta, gamma=gamma, thr_graphic=thr_graphic)
                 scored_edges.append((src, dst, data, edge_score))
 
             # Sort edges by score (descending)
@@ -547,12 +519,9 @@ def walk_beamsearch(nx_graph, start_node, hap=None, score_attr='score', beam_wid
                     other_beam = beams_with_same_end[i]
                     merged_result = merge_beams(best_beam, other_beam, last_node, nx_graph, 
                                               score_attr, 
-                                              beam_score_shift=beam_score_shift, edge_penalty=edge_penalty, 
-                                              kmer_penalty_factor=kmer_penalty_factor, 
+                                              hap=hap,
                                               graphic_preds=graphic_preds,
-                                              use_hifiasm_result=use_hifiasm_result,
-                                              wrong_kmer_fraction=wrong_kmer_fraction,
-                                              alpha=alpha, beta=beta, gamma=gamma, delta=delta, thr_graphic=thr_graphic)
+                                              alpha=alpha, beta=beta, gamma=gamma, thr_graphic=thr_graphic)
                     if merged_result is not None:
                         best_beam = merged_result
                     # If merged_result is None, it means one beam was deleted
@@ -647,17 +616,12 @@ def get_walk(nx_graph, hap, config, random_mode=False, walk_mode=None, graphic_p
             nx_graph, dst, hap=hap,
             score_attr='score',
             beam_width=config['beam_width'],
-            beam_score_shift=config['beam_score_shift'],
-            edge_penalty=config['edge_penalty'],
-            kmer_penalty_factor=config['kmer_penalty_factor'],
             use_best_intermediate=config['beam_intermediate'],
             visited=init_visited,
             graphic_preds=graphic_preds,
-            use_hifiasm_result=config.get('use_hifiasm_result', False),
             alpha=config['alpha'],
             beta=config['beta'],
             gamma=config['gamma'],
-            delta=config['delta'],
             thr_graphic=config['thr_graphic']
         )
         forward_wrong_haplo_len = 0  # Beam search doesn't track wrong haplotype length
@@ -674,17 +638,12 @@ def get_walk(nx_graph, hap, config, random_mode=False, walk_mode=None, graphic_p
             reversed_graph, src, hap=hap,
             score_attr='score',
             beam_width=config['beam_width'],
-            beam_score_shift=config['beam_score_shift'],
-            edge_penalty=config['edge_penalty'],
-            kmer_penalty_factor=config['kmer_penalty_factor'],
             use_best_intermediate=config['beam_intermediate'],
             visited=forward_visited,
             graphic_preds=graphic_preds,
-            use_hifiasm_result=config.get('use_hifiasm_result', False),
             alpha=config['alpha'],
             beta=config['beta'],
             gamma=config['gamma'],
-            delta=config['delta'],
             thr_graphic=config['thr_graphic']
         )
         backward_wrong_haplo_len = 0  # Beam search doesn't track wrong haplotype length
