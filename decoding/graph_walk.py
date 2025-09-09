@@ -22,11 +22,7 @@ def compute_beam_edge_score(nx_graph, src, dst, data, hap=None, graphic_preds=No
         
     Returns:
         float: Computed beam score
-    """
-    # Constants
-    LOW_EDGE_SCORE_PENALTY = 1000000
-    LOW_EDGE_SCORE_THRESHOLD = 0.1
-    
+    """    
     # Calculate node length (sequence length added to assembly)
     node_length = nx_graph.nodes[dst]['read_length'] - data['overlap_length']
     read_add_length = node_length / nx_graph.nodes[dst]['read_length']
@@ -46,10 +42,6 @@ def compute_beam_edge_score(nx_graph, src, dst, data, hap=None, graphic_preds=No
     edge_score = data['score']
     length_reward = alpha * node_length
     edge_score_component = (gamma * (1 - edge_score)) ** 2
-
-    # Apply heavy penalty for very low edge scores
-    if edge_score < LOW_EDGE_SCORE_THRESHOLD:
-        edge_score_component = LOW_EDGE_SCORE_PENALTY
 
     beam_score = length_reward - wrong_hap_penalty - edge_score_component
     

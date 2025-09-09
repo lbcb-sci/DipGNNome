@@ -10,12 +10,54 @@ paths:
 # improve_walk: dijkstra, bellman_ford, none
 # mark_as_visited: shared_neighbors, 1-hop,  , dual_walks_shared, dual_walks_1_hop
 beam:
-
   gt_score: 'score'  
-  reduction_score: 'to_cut'
-  cut_higher_than: 0.5
+  c_t: 0.5
+  c_b: 0.9
   flip_score: True
 
+  min_component_size: 25
+  min_walk_length: 100000
+  min_path_length: 25
+
+  beam_width: 5
+  beam_intermediate: True
+  sample_by_score: False
+  sample_size: 100
+  mark_as_visited: '2-hop'
+
+  # Scoring parameters moved from code into config
+  alpha: 0.00001
+  beta: 3
+  gamma: 25
+  thr_graphic: 0.1
+  
+greedy:
+  gt_score: 'score'  
+  c_t: 0.5
+  c_b: 0.9
+  flip_score: True
+
+  min_component_size: 25
+  min_walk_length: 100000
+  min_path_length: 25
+
+  beam_width: 1
+  beam_intermediate: True
+  sample_by_score: False
+  sample_size: 100
+  mark_as_visited: '2-hop'
+
+  # Scoring parameters moved from code into config
+  alpha: 0.00001
+  beta: 3
+  gamma: 25
+  thr_graphic: 0.1
+
+graphic:
+  gt_score: 'score'  
+  c_t: 0.5
+  c_b: 0.9
+  flip_score: True
 
   min_component_size: 25
   min_walk_length: 100000
@@ -24,39 +66,11 @@ beam:
   beam_width: 10
   beam_intermediate: True
   sample_by_score: False
-  sample_size: 25
+  sample_size: 100
   mark_as_visited: '2-hop'
 
   # Scoring parameters moved from code into config
   alpha: 0.00001
   beta: 10
-  gamma: 10
-  delta: 0.3
+  gamma: 20
   thr_graphic: 0.1
-  
-
-
-greedy:
-  graphic_epsilon: 0.08
-  mark_tips: True
-  remove_transitives: 0
-  gt_score: 'gt_bin'
-  reduction_score: 'gt_cut'
-  reduction: 'cut_higher_threshold' #'top_p_graph', cut_lower_threshold
-  cut_higher_than: 0.9
-  reduction_param: 0.7
-  to_dag: 'none'
-  min_component_size: 100
-  min_walk_length: 1000000
-  walk: 'greedy'
-  select_walk: 'longest_no_whs' #'longest'
-  penalty_wrong_hap: 0.1
-  penalty_ambiguous: 0.05
-  hap_length_penalty: 1  #only for dag longest walk
-  sample_by_score: False
-  sample_size: 100
-  max_wrong_haplo: -1
-  improve_walk: 'none'
-  mark_as_visited: '1-hop'
-  min_path_length: 25
-  max_wrong_haplo_fraction: 0.4

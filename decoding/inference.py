@@ -135,7 +135,11 @@ def get_walks(nx_graph, config, diploid=False, symmetry=True, graphic_scores=Fal
     
     initial_edges = nx_graph.number_of_edges()
     
-    nx_graph = reduce_and_cut.reduction(nx_graph, config, diploid, symmetry)
+    # reduce from translocation score using c_t threshold
+    nx_graph = reduce_and_cut.reduction(nx_graph, config, diploid, symmetry, score_attr='to_cut', threshold=config['c_t'])
+    # reduce from edge score using c_b threshold
+    nx_graph = reduce_and_cut.reduction(nx_graph, config, diploid, symmetry, score_attr='score', threshold=config['c_b'])
+
     after_reduction = nx_graph.number_of_edges()
     print(f"Removed { initial_edges - after_reduction} edges during reduction ({initial_edges} -> {after_reduction})")
     
