@@ -1,11 +1,8 @@
 import networkx as nx
 
 import reduce_and_cut
-import to_dag
 import graph_walk
-import improve_walk
 import mark_as_visited
-import dijkstra
 
 def find_paths(nx_graph, hap, config, symmetry=True, graphic_preds=None):
     
