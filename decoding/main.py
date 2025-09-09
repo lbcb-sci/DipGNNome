@@ -19,8 +19,8 @@ import inference
 # Add parent directory to path before importing utils
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from training.utils import set_seed, STDS_AND_MEANS
-from training.SymGatedGCN import SymGatedGCNModel, SymGatedGCNModelDoubleHead
+from training.utils import set_seed
+from training.SymGatedGCN import SymGatedGCNModel
 
 stds_and_means = STDS_AND_MEANS
 
@@ -83,7 +83,7 @@ def compute_scores(dgl_path, model_path, config, output_path, device='cpu'):
     
     # Initialize double head model
     print("Loading double head model...")
-    model = SymGatedGCNModelDoubleHead(
+    model = SymGatedGCNModel(
         train_config['node_features'],
         train_config['edge_features'],
         train_config['hidden_features'],
