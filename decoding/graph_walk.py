@@ -41,7 +41,7 @@ def compute_beam_edge_score(nx_graph, src, dst, data, hap=None, graphic_preds=No
     # Calculate edge score components
     edge_score = data['score']
     length_reward = alpha * node_length
-    edge_score_component = (gamma * (1 - edge_score)) ** 2
+    edge_score_component = (gamma * edge_score) ** 2
 
     beam_score = length_reward - wrong_hap_penalty - edge_score_component
     
