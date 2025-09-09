@@ -35,7 +35,7 @@ def cut_with_threshold(nx_graph, score_attr='score', prob_threshold=0.9, higher_
     return filtered_graph
 
 
-def reduction(nx_graph, config, diploid, symmetry=True, reduce_complements=True, score_attr=None, threshold=None):
+def reduction(nx_graph, config, diploid, symmetry=True, reduce_complements=True, score_attr=None, threshold=None, higher_means_correct=False):
     if score_attr is None:
         score_attr = config['reduction_score']
     if threshold is None:
@@ -45,7 +45,7 @@ def reduction(nx_graph, config, diploid, symmetry=True, reduce_complements=True,
     
     # Store the original edge count
     edges_before = nx_graph.number_of_edges()
-    nx_graph = cut_with_threshold(nx_graph, prob_threshold=threshold, score_attr=score_attr, higher_means_correct=False)
+    nx_graph = cut_with_threshold(nx_graph, prob_threshold=threshold, score_attr=score_attr, higher_means_correct=higher_means_correct)
 
     if symmetry:
         # Count edges after reduction but before handling complements
