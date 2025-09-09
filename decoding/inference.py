@@ -164,8 +164,6 @@ def get_walks(nx_graph, config, diploid=False, symmetry=True, graphic_scores=Fal
         subG = nx_graph.subgraph(component).copy()
         subG = nx.DiGraph(subG)
 
-        subG = to_dag.reduction(subG, config['to_dag'])
-
         if graphic_scores:
             graphic_preds = nx.get_node_attributes(subG, 'graphic_score')
             graphic_preds_flipped = {k: -v for k, v in graphic_preds.items()}
