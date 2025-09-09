@@ -14,6 +14,8 @@ beam:
   gt_score: 'score'  
   reduction_score: 'to_cut'
   cut_higher_than: 0.5
+  flip_score: True
+
 
   min_component_size: 25
   min_walk_length: 100000
