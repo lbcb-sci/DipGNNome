@@ -10,27 +10,7 @@ paths:
 # improve_walk: dijkstra, bellman_ford, none
 # mark_as_visited: shared_neighbors, 1-hop,  , dual_walks_shared, dual_walks_1_hop
 beam:
-  mark_tips: False
-  remove_transitives: 0
-  flip_score: False
-  to_dag: 'none'
-  reduction_param: 0.7
-  walk: 'beam_search'
-  improve_walk: 'none'
 
-  beam_score_shift: 0.5
-  edge_penalty: 10
-  kmer_penalty_factor: 1
-  penalty_wrong_hap: 1
-  penalty_ambiguous: 0.2
-  hap_length_penalty: 1  #only for dag longest walk
-  select_walk: 'longest' #'longest'
-
-
-
-
-
-  graphic_epsilon: 0.08  
   gt_score: 'score'
   reduction_score: 'to_cut'
   reduction: 'cut_higher_threshold' #'top_p_graph', cut_lower_threshold
@@ -52,6 +32,12 @@ beam:
 
   mark_as_visited: '2-hop'
 
+  # Scoring parameters moved from code into config
+  alpha: 0.00001
+  beta: 10
+  gamma: 10
+  delta: 0.3
+  thr_graphic: 0.1
   
 
 
