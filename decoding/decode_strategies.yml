@@ -11,26 +11,18 @@ paths:
 # mark_as_visited: shared_neighbors, 1-hop,  , dual_walks_shared, dual_walks_1_hop
 beam:
 
-  gt_score: 'score'
+  gt_score: 'score'  
   reduction_score: 'to_cut'
-  reduction: 'cut_higher_threshold' #'top_p_graph', cut_lower_threshold
-  
   cut_higher_than: 0.5
-  
-  
+
   min_component_size: 25
   min_walk_length: 100000
   min_path_length: 25
 
   beam_width: 10
   beam_intermediate: True
-
   sample_by_score: False
   sample_size: 25
-
-  max_wrong_haplo: 10
-  max_wrong_haplo_fraction: 0.15
-
   mark_as_visited: '2-hop'
 
   # Scoring parameters moved from code into config
