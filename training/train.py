@@ -47,10 +47,20 @@ def prepare_subgraph(g, sub_g, device):
     sub_g = sub_g.to(device)
     
     edge_ids = sub_g.edata['_ID'].to(device)
-    ol_len = g.edata['overlap_length'][edge_ids].float()
-    ol_len /= 10000
-    #ol_sim = g.edata['overlap_similarity'][edge_ids].float()
-    e = ol_len.unsqueeze(-1)
+    
+    # Debug: Check if overlap_length exists in the graph
+    if 'overlap_length' not in g.edata:
+        print(f"DEBUG: 'overlap_length' not found in g.edata. Available keys: {list(g.edata.keys())}")
+        # Create dummy edge features
+        e = torch.ones(sub_g.num_edges(), 1, device=device)
+    else:
+        ol_len = g.edata['overlap_length'][edge_ids].float()
+        ol_len /= 10000
+        #ol_sim = g.edata['overlap_similarity'][edge_ids].float()
+        e = ol_len.unsqueeze(-1)
+    
+    print(f"DEBUG: Edge data shape: {e.shape}, device: {e.device}")
+    print(f"DEBUG: Edge data sample: {e[:5] if e.numel() > 0 else 'empty'}")
     # Node features - get node IDs and access attributes from original graph
     node_ids = sub_g.ndata['_ID'].to(device)
     

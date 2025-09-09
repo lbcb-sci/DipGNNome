@@ -9,167 +9,50 @@ paths:
 # walk: random, greedy, longest (dag)
 # improve_walk: dijkstra, bellman_ford, none
 # mark_as_visited: shared_neighbors, 1-hop,  , dual_walks_shared, dual_walks_1_hop
-
-hifiasm_res_based:
-  double_model: True
-  use_hifiasm_result: True
-  graphic_epsilon: 0.08
+beam:
   mark_tips: False
   remove_transitives: 0
-  gt_score: 'hifiasm_result'
   flip_score: False
-  reduction_score: 'hifiasm_result'
-  reduction: 'none' #'top_p_graph', cut_lower_threshold
-  reduction_param: 0.7
-  cut_higher_than: 0.9
   to_dag: 'none'
-  min_component_size: 25
-  min_walk_length: 1000000
+  reduction_param: 0.7
   walk: 'beam_search'
+  improve_walk: 'none'
+
+  beam_score_shift: 0.5
+  edge_penalty: 10
+  kmer_penalty_factor: 1
+  penalty_wrong_hap: 1
+  penalty_ambiguous: 0.2
+  hap_length_penalty: 1  #only for dag longest walk
+
+
+
+
+
+  graphic_epsilon: 0.08  
+  gt_score: 'score'
+  reduction_score: 'to_cut'
+  reduction: 'cut_higher_threshold' #'top_p_graph', cut_lower_threshold
+  
+  cut_higher_than: 0.5
+  
+  min_component_size: 25
+  min_walk_length: 100000
+  min_path_length: 25
+
   select_walk: 'longest' #'longest'
   beam_width: 10
   beam_intermediate: True
-  beam_score_shift: 0.5
-  edge_penalty: 10
-  kmer_penalty_factor: 10 
-  penalty_wrong_hap: 0.2
-  penalty_ambiguous: 0.2
-  hap_length_penalty: 1  #only for dag longest walk
-  sample_by_score: False
-  sample_size: 10
-  max_wrong_haplo: 10
-  improve_walk: 'none'
-  mark_as_visited: '1-hop'
-  min_path_length: 25
-  max_wrong_haplo_fraction: 0.4
 
-beam:
-  graphic_epsilon: 0.08
-  double_model: False
-  mark_tips: False
-  remove_transitives: 0
-  gt_score: 'score'
-  flip_score: False
-  reduction_score: 'to_cut'
-  reduction: 'none' #'top_p_graph', cut_lower_threshold
-  reduction_param: 0.7
-  cut_higher_than: 0.9
-  to_dag: 'none'
-  min_component_size: 25
-  min_walk_length: 100000
-  walk: 'beam_search'
-  select_walk: 'longest' #'longest'
-  beam_width: 20
-  beam_intermediate: True
-
-  beam_score_shift: 0.5
-  edge_penalty: 10
-  kmer_penalty_factor: 1
-
-  penalty_wrong_hap: 1
-  penalty_ambiguous: 0.2
-  hap_length_penalty: 1  #only for dag longest walk
   sample_by_score: False
   sample_size: 25
+
   max_wrong_haplo: 10
-  improve_walk: 'none'
-  mark_as_visited: '2-hop'
-  min_path_length: 25
   max_wrong_haplo_fraction: 0.15
 
-beam_cut:
-  graphic_epsilon: 0.08
-  double_model: True
-  mark_tips: False
-  remove_transitives: 0
-  gt_score: 'score'
-  flip_score: True
-  reduction_score: 'to_cut'
-  reduction: 'none' #'top_p_graph', cut_lower_threshold
-  reduction_param: 0.7
-  cut_higher_than: 0.9
-  to_dag: 'none'
-  min_component_size: 25
-  min_walk_length: 100000
-  walk: 'beam_search'
-  select_walk: 'longest' #'longest'
-  beam_width: 20
-  beam_intermediate: True
-
-  beam_score_shift: 0.5
-  edge_penalty: 10
-  kmer_penalty_factor: 1
-
-  penalty_wrong_hap: 1
-  penalty_ambiguous: 0.2
-  hap_length_penalty: 1  #only for dag longest walk
-  sample_by_score: False
-  sample_size: 25
-  max_wrong_haplo: 10
-  improve_walk: 'none'
   mark_as_visited: '2-hop'
-  min_path_length: 25
-  max_wrong_haplo_fraction: 0.15
 
-beam_cut_classy:
-  graphic_epsilon: 0.08
-  double_model: True
-  mark_tips: False
-  remove_transitives: 0
-  gt_score: 'score'
-  flip_score: True
-  reduction_score: 'to_cut'
-  reduction: 'cut_higher_threshold' #'top_p_graph', cut_lower_threshold
-  reduction_param: 0.9
-  cut_higher_than: 0.9
-  to_dag: 'none'
-  min_component_size: 25
-  min_walk_length: 100000
-  walk: 'beam_search'
-  select_walk: 'longest' #'longest'
-  beam_width: 20
-  beam_intermediate: True
-
-  beam_score_shift: 0.5
-  edge_penalty: 10
-  kmer_penalty_factor: 1
-
-  penalty_wrong_hap: 1
-  penalty_ambiguous: 0.2
-  hap_length_penalty: 1  #only for dag longest walk
-  sample_by_score: False
-  sample_size: 50
-  max_wrong_haplo: 10
-  improve_walk: 'none'
-  mark_as_visited: '2-hop'
-  min_path_length: 25
-  max_wrong_haplo_fraction: 0.15
-
-
-greedy_bd:
-  graphic_epsilon: 0.08
-  mark_tips: False
-  remove_transitives: 0
-  gt_score: 'gt_bin'
-  reduction_score: 'malicious'
-  reduction: 'none' #'top_p_graph', cut_lower_threshold
-  reduction_param: 0.7
-  to_dag: 'none'
-  min_component_size: 100
-  min_walk_length: 1000000
-  walk: 'greedy'
-  select_walk: 'longest' #'longest'
-  beam_intermediate: True
-  penalty_wrong_hap: 0
-  penalty_ambiguous: 0.0
-  hap_length_penalty: 0  #only for dag longest walk
-  sample_by_score: False
-  sample_size: 100
-  max_wrong_haplo: -1
-  improve_walk: 'bubble_dijkstra'
-  mark_as_visited: 'shared_neighbors'
-  min_path_length: 25
-  max_wrong_haplo_fraction: 0.4
+  
 
 
 greedy:
@@ -196,27 +79,3 @@ greedy:
   mark_as_visited: '1-hop'
   min_path_length: 25
   max_wrong_haplo_fraction: 0.4
-
-cut_and_dag:
-  graphic_epsilon: 0.08
-  mark_tips: True
-  remove_transitives: 0
-  gt_score: 'gt_bin'   #  'gt_wo_skip'
-  reduction_score: 'malicious'
-  reduction: 'cut_higher_threshold' #'top_p_graph', cut_lower_threshold
-  reduction_param: 0.7
-  to_dag: 'social_agony'
-  min_component_size: 100
-  min_walk_length: 1000000
-  walk: 'dag_longest'
-  select_walk: 'longest'
-  penalty_wrong_hap: 0.3
-  penalty_ambiguous: 0.1
-  hap_length_penalty: 1  # only for dag longest walk
-  sample_by_score: False
-  sample_size: 10
-  max_wrong_haplo: -1
-  improve_walk: 'none'
-  mark_as_visited: 'shared_neighbors' #shared_neighbors
-  min_path_length: 25
-  max_wrong_haplo_fraction: 0.3

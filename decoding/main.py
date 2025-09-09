@@ -14,7 +14,6 @@ from datetime import datetime
 
 import eval
 import inference 
-import hifiasm_res_based_inference
 
 
 # Add parent directory to path before importing utils
@@ -25,10 +24,6 @@ from training.SymGatedGCN import SymGatedGCNModel, SymGatedGCNModelDoubleHead
 
 stds_and_means = STDS_AND_MEANS
 
-# Support-aware sequence assembly:
-# When --support_aware flag is used, the walk_to_sequence_support_aware function
-# will choose the sequence from the node with higher support value for overlapping regions.
-# This can improve assembly quality by preferring sequences from more reliable nodes.
 
 def get_timestamp():
     """Return a formatted timestamp string."""
@@ -60,7 +55,7 @@ def preprocess_graph(g, x_attr, gt=False):
     
     return x, e
 
-def compute_scores(dgl_path, model_path, config, output_path, device='cpu', double_model=False):
+def compute_scores(dgl_path, model_path, config, output_path, device='cpu'):
     """
     Compute edge scores for a graph using a trained model and save them to a file.
     
@@ -70,7 +65,6 @@ def compute_scores(dgl_path, model_path, config, output_path, device='cpu', doub
         config: Configuration dictionary
         output_path: Path to save the computed scores
         device: Device to use for computation
-        double_model: Whether to use double head model
     
     Returns:
         Dictionary containing the computed scores
@@ -87,35 +81,21 @@ def compute_scores(dgl_path, model_path, config, output_path, device='cpu', doub
     # Load model configuration
     train_config = config['training']
     
-    # Initialize model based on double_model flag
-    print(f"Loading {'double head' if double_model else 'single head'} model...")
-    if double_model:
-        model = SymGatedGCNModelDoubleHead(
-            train_config['node_features'],
-            train_config['edge_features'],
-            train_config['hidden_features'],
-            train_config['hidden_edge_features'],
-            train_config['num_gnn_layers'],
-            train_config['hidden_edge_scores'],
-            train_config['nb_pos_enc'],
-            train_config['nr_classes'],
-            dropout=train_config['dropout'],
-            pred_dropout=train_config.get('pred_dropout', 0),
-            norm=train_config['norm']  # Default to 'layer' if not specified
-        )
-    else:
-        model = SymGatedGCNModel(
-            train_config['node_features'],
-            train_config['edge_features'],
-            train_config['hidden_features'],
-            train_config['hidden_edge_features'],
-            train_config['num_gnn_layers'],
-            train_config['hidden_edge_scores'],
-            train_config['nb_pos_enc'],
-            train_config['nr_classes'],
-            dropout=train_config['dropout'],
-            norm=train_config['norm']  # Default to 'layer' if not specified
-        )
+    # Initialize double head model
+    print("Loading double head model...")
+    model = SymGatedGCNModelDoubleHead(
+        train_config['node_features'],
+        train_config['edge_features'],
+        train_config['hidden_features'],
+        train_config['hidden_edge_features'],
+        train_config['num_gnn_layers'],
+        train_config['hidden_edge_scores'],
+        train_config['nb_pos_enc'],
+        train_config['nr_classes'],
+        dropout=train_config['dropout'],
+        pred_dropout=train_config.get('pred_dropout', 0),
+        norm=train_config['norm']  # Default to 'layer' if not specified
+    )
     
     model.load_state_dict(torch.load(model_path, map_location=torch.device(device)))
     model.eval()
@@ -136,8 +116,8 @@ def compute_scores(dgl_path, model_path, config, output_path, device='cpu', doub
                   for i, (src, dst) in enumerate(zip(g.edges()[0], g.edges()[1]))}
     save_dict['edge_scores'] = edge_scores
     
-    # For double models, also create cut scores (to_cut)
-    if double_model and cut_logits is not None:
+    # Create cut scores (to_cut)
+    if cut_logits is not None:
         cut_scores = {(src.item(), dst.item()): torch.sigmoid(cut_logits[i]).item()
                      for i, (src, dst) in enumerate(zip(g.edges()[0], g.edges()[1]))}
         save_dict['cut_scores'] = cut_scores
@@ -160,7 +140,7 @@ def compute_scores(dgl_path, model_path, config, output_path, device='cpu', doub
             complement_pairs_found += 1
     
     # Also average cut_scores if they exist
-    if double_model and 'cut_scores' in save_dict:
+    if 'cut_scores' in save_dict:
         cut_scores = save_dict['cut_scores']
         for (src, dst), score in list(cut_scores.items()):
             comp_src = dst ^ 1
@@ -239,646 +219,7 @@ def walk_to_sequence(walks, graph, n2s):
 
     return contigs
 
-def walk_to_sequence_classic(walks, graph, utg_node_to_node, raw_reads, old_graph):
-    """Classic reconstruction by expanding each node to its old read-id chain and stitching via old-graph overlaps.
-    
-    walks: list of paths in the current graph (node ids)
-    utg_node_to_node: mapping current node id -> list of old read ids (ordered)
-    raw_reads: dict mapping old read ids -> sequence (from reduced_reads_raw)
-    old_graph: NetworkX graph on old read ids with 'overlap_length' on edges
-    """
-
-    contigs = []
-    old_overlap = nx.get_edge_attributes(old_graph, 'overlap_length')
-
-    utg_map = utg_node_to_node #normalize_utg_map(utg_node_to_node)
-
-    def expand_to_raw_ids(node_id):
-        # If this id directly corresponds to a raw read, return it
-        if str(node_id) in raw_reads:
-            return (node_id,)
-        # If this id can be expanded via the UTG map, recursively expand
-        if node_id in utg_map:
-            expanded = []
-            for child in utg_map[node_id]:
-                expanded.extend(expand_to_raw_ids(child))
-            return tuple(expanded)
-        # Unknown id; return empty
-        return tuple()
-
-    for i, walk in enumerate(walks):
-        if not walk:
-            continue
-
-        # Expand walk nodes into a flat sequence of old node ids
-        expanded_old_nodes = []
-        for node in walk:
-            chain = utg_map[node] #get_utg_chain_safe(node)
-            # If chain is empty, try interpreting the node as raw directly
-            if not chain:
-                if str(node) in raw_reads:
-                    chain = [int(node)]
-                else:
-                    print(f"Warning: No UTG mapping and not a raw read for node {node}")
-                    continue
-            for old_id in chain:
-                expanded_old_nodes.extend(expand_to_raw_ids(old_id))
-
-        # Stitch sequences using old overlaps
-        parts = []
-        prev_old = None
-        for old_id in expanded_old_nodes:
-            if str(old_id) not in raw_reads:
-                print(f"Warning: raw read for id {old_id} not found; skipping this id")
-                prev_old = old_id
-                continue
-            seq = raw_reads[str(old_id)]
-            if prev_old is None or str(prev_old) not in raw_reads:
-                parts.append(seq)
-            else:
-                ol = old_overlap[(prev_old, old_id)]
-                ol_int = int(ol)
-                parts.append(seq[ol_int:])
-            prev_old = old_id
-
-        contig_seq = ''.join(parts)
-        contig = Seq(contig_seq)
-        contig = SeqIO.SeqRecord(contig)
-        contig.id = f'contig_{i+1}'
-        contig.description = f'length={len(contig)}'
-        contigs.append(contig)
-    return contigs
-
-def walk_to_sequence_classic_support_aware(walks, graph, utg_node_to_node, raw_reads, old_graph):
-    """Classic reconstruction by expanding each node to its old read-id chain and stitching via old-graph overlaps.
-    This version includes support-aware node filtering: removes nodes with lower support than surrounding nodes
-    when the surrounding nodes have a direct connection.
-    
-    walks: list of paths in the current graph (node ids)
-    graph: NetworkX graph with node support attributes
-    utg_node_to_node: mapping current node id -> list of old read ids (ordered)
-    raw_reads: dict mapping old read ids -> sequence (from reduced_reads_raw)
-    old_graph: NetworkX graph on old read ids with 'overlap_length' on edges
-    """
-
-    contigs = []
-    old_overlap = nx.get_edge_attributes(old_graph, 'overlap_length')
-    support = nx.get_node_attributes(graph, 'support')
-
-    utg_map = utg_node_to_node #normalize_utg_map(utg_node_to_node)
-
-    def expand_to_raw_ids(node_id):
-        # If this id directly corresponds to a raw read, return it
-        if str(node_id) in raw_reads:
-            return (node_id,)
-        # If this id can be expanded via the UTG map, recursively expand
-        if node_id in utg_map:
-            expanded = []
-            for child in utg_map[node_id]:
-                expanded.extend(expand_to_raw_ids(child))
-            return tuple(expanded)
-        # Unknown id; return empty
-        return tuple()
-
-    def filter_walk_by_support(walk):
-        """Filter walk by removing nodes with lower support than surrounding nodes when they have direct connection."""
-        if len(walk) <= 2:
-            return walk  # No filtering possible for walks of length 2 or less
-        
-        filtered_walk = [walk[0]]  # Always keep the first node
-        
-        for i in range(1, len(walk) - 1):
-            prev_node = walk[i - 1]
-            curr_node = walk[i]
-            next_node = walk[i + 1]
-            
-            # Check if surrounding nodes have a direct connection
-            has_direct_connection = graph.has_edge(prev_node, next_node)
-            
-            if has_direct_connection:
-                # Get support values (default to 0 if not available)
-                prev_support = support.get(prev_node, 0.0)
-                curr_support = support.get(curr_node, 0.0)
-                next_support = support.get(next_node, 0.0)
-                
-                # Remove current node if its support is lower than both surrounding nodes
-                if curr_support < prev_support and curr_support < next_support:
-                    print(f"Removing node {curr_node} (support: {curr_support}) from walk, keeping {prev_node}->{next_node} (supports: {prev_support}, {next_support})")
-                    continue  # Skip adding this node to filtered walk
-            
-            # Keep the current node
-            filtered_walk.append(curr_node)
-        
-        # Always keep the last node
-        filtered_walk.append(walk[-1])
-        
-        return filtered_walk
-
-    for i, walk in enumerate(walks):
-        if not walk:
-            continue
-
-        # Apply support-aware filtering to the walk
-        original_length = len(walk)
-        filtered_walk = filter_walk_by_support(walk)
-        if len(filtered_walk) < original_length:
-            print(f"Walk {i}: filtered from {original_length} to {len(filtered_walk)} nodes")
-
-        # Expand walk nodes into a flat sequence of old node ids
-        expanded_old_nodes = []
-        for node in filtered_walk:
-            chain = utg_map[node] #get_utg_chain_safe(node)
-            # If chain is empty, try interpreting the node as raw directly
-            if not chain:
-                if str(node) in raw_reads:
-                    chain = [int(node)]
-                else:
-                    print(f"Warning: No UTG mapping and not a raw read for node {node}")
-                    continue
-            for old_id in chain:
-                expanded_old_nodes.extend(expand_to_raw_ids(old_id))
-
-        # Stitch sequences using old overlaps
-        parts = []
-        prev_old = None
-        for old_id in expanded_old_nodes:
-            if str(old_id) not in raw_reads:
-                print(f"Warning: raw read for id {old_id} not found; skipping this id")
-                prev_old = old_id
-                continue
-            seq = raw_reads[str(old_id)]
-            if prev_old is None or str(prev_old) not in raw_reads:
-                parts.append(seq)
-            else:
-                ol = old_overlap[(prev_old, old_id)]
-                ol_int = int(ol)
-                parts.append(seq[ol_int:])
-            prev_old = old_id
-
-        contig_seq = ''.join(parts)
-        contig = Seq(contig_seq)
-        contig = SeqIO.SeqRecord(contig)
-        contig.id = f'contig_{i+1}'
-        contig.description = f'length={len(contig)}'
-        contigs.append(contig)
-    return contigs
-
-def walk_to_sequence_support_aware(walks, graph, n2s):
-    contigs = []
-    # Use node support for ranking
-    support = nx.get_node_attributes(graph, 'support')
-    # Use edge overlap lengths to place nodes on a global axis per walk
-    overlap_lengths = nx.get_edge_attributes(graph, 'overlap_length')
-
-
-
-def walk_to_sequence_consensus_baselevel(walks, graph, n2s): #2
-    contigs = []
-    overlap_lengths = nx.get_edge_attributes(graph, 'overlap_length')
-    support = nx.get_node_attributes(graph, 'support')
-
-    for i, walk in enumerate(walks):
-        if not walk:
-            continue
-        if len(walk) == 1:
-            contig = Seq(str(n2s[str(walk[0])]))
-            contig = SeqIO.SeqRecord(contig)
-            contig.id = f'contig_{i+1}'
-            contig.description = f'length={len(contig)}'
-            contigs.append(contig)
-            continue
-
-        # Global positions
-        start_positions = {}
-        end_positions = {}
-        node_order_index = {node_id: idx for idx, node_id in enumerate(walk)}
-        node_rank_key = {node_id: (support.get(node_id, 0.0), -node_order_index[node_id]) for node_id in walk}
-
-        first_node = walk[0]
-        start_positions[first_node] = 0
-        end_positions[first_node] = len(str(n2s[str(first_node)]))
-
-        for j in range(1, len(walk)):
-            prev_node = walk[j - 1]
-            curr_node = walk[j]
-            prev_len = len(str(n2s[str(prev_node)]))
-            ol = overlap_lengths.get((prev_node, curr_node), 0)
-            start_positions[curr_node] = start_positions[prev_node] + prev_len - ol
-            end_positions[curr_node] = start_positions[curr_node] + len(str(n2s[str(curr_node)]))
-
-        # Break coordinates
-        break_coords_set = {0}
-        for n in walk:
-            break_coords_set.add(start_positions[n])
-            break_coords_set.add(end_positions[n])
-        last_end = max(end_positions.values()) if end_positions else 0
-        break_coords_set.add(last_end)
-        break_coordinates = sorted(break_coords_set)
-
-        # Contributors per interval via sweep
-        from collections import defaultdict
-        from bisect import bisect_left, insort
-        events_add = defaultdict(list)
-        events_remove = defaultdict(list)
-        for n in walk:
-            events_add[start_positions[n]].append(n)
-            events_remove[end_positions[n]].append(n)
-        active_indices = []
-        interval_contributors = []
-        for b_idx in range(len(break_coordinates) - 1):
-            b_start = break_coordinates[b_idx]
-            for n in events_remove.get(b_start, ()):  # ends do not contribute
-                idx = node_order_index[n]
-                pos = bisect_left(active_indices, idx)
-                if pos < len(active_indices) and active_indices[pos] == idx:
-                    active_indices.pop(pos)
-            for n in events_add.get(b_start, ()):  # starts do contribute
-                idx = node_order_index[n]
-                insort(active_indices, idx)
-            interval_contributors.append([walk[idx] for idx in active_indices])
-
-        # Build consensus sequence by intervals
-        consensus_parts = []
-        for b_idx in range(len(break_coordinates) - 1):
-            b_start = break_coordinates[b_idx]
-            b_end = break_coordinates[b_idx + 1]
-            interval_len = b_end - b_start
-            if interval_len <= 0:
-                continue
-            contributors = interval_contributors[b_idx]
-            if not contributors:
-                continue
-
-            # Small-k fast paths
-            if len(contributors) == 1:
-                node = contributors[0]
-                local_start = b_start - start_positions[node]
-                local_end = local_start + interval_len
-                consensus_parts.append(str(n2s[str(node)])[local_start:local_end])
-                continue
-            if len(contributors) == 2:
-                n0, n1 = contributors[0], contributors[1]
-                winner = n0 if node_rank_key[n0] >= node_rank_key[n1] else n1
-                local_start = b_start - start_positions[winner]
-                local_end = local_start + interval_len
-                consensus_parts.append(str(n2s[str(winner)])[local_start:local_end])
-                continue
-
-            # 3+ contributors: per-base weighted voting
-            interval_bases = []
-            for offset in range(interval_len):
-                global_pos = b_start + offset
-                base_to_weight = {}
-                best_node = None
-                best_node_support = -1.0
-                best_node_chain_idx = len(walk) + 1
-
-                for node in contributors:
-                    local_index = global_pos - start_positions[node]
-                    seq = str(n2s[str(node)])
-                    if local_index < 0 or local_index >= len(seq):
-                        continue
-                    base_char = seq[local_index]
-                    w = support.get(node, 0.0)
-                    base_to_weight[base_char] = base_to_weight.get(base_char, 0.0) + w
-
-                    if (w > best_node_support) or (w == best_node_support and node_order_index[node] < best_node_chain_idx):
-                        best_node = node
-                        best_node_support = w
-                        best_node_chain_idx = node_order_index[node]
-
-                if not base_to_weight:
-                    interval_bases.append('N')
-                    continue
-
-                max_weight = max(base_to_weight.values())
-                candidate_bases = [b for b, w in base_to_weight.items() if w == max_weight]
-                if len(candidate_bases) == 1:
-                    chosen_base = candidate_bases[0]
-                else:
-                    if best_node is not None:
-                        local_index = global_pos - start_positions[best_node]
-                        seq_best = str(n2s[str(best_node)])
-                        if 0 <= local_index < len(seq_best):
-                            chosen_base = seq_best[local_index]
-                        else:
-                            chosen_base = candidate_bases[0]
-                    else:
-                        chosen_base = candidate_bases[0]
-
-                interval_bases.append(chosen_base)
-
-            consensus_parts.append(''.join(interval_bases))
-
-        contig_seq = ''.join(consensus_parts)
-        contig = Seq(contig_seq)
-        contig = SeqIO.SeqRecord(contig)
-        contig.id = f'contig_{i+1}'
-        contig.description = f'length={len(contig)}'
-        contigs.append(contig)
-
-    return contigs
-
-def walk_to_sequence_wrong_kmer(walks, graph, n2s, haplotype='maternal'):
-    """
-    Convert walks to sequences using NetworkX graph attributes.
-    For each basepair position, choose the sequence from the node with lowest wrong kmer count.
-    This method uses kmer_count_m for paternal haplotypes and kmer_count_p for maternal haplotypes.
-    
-    Args:
-        walks: List of walks (paths through the graph)
-        graph: NetworkX graph with node and edge attributes
-        n2s: Dictionary mapping node IDs to sequences
-        haplotype: 'maternal' or 'paternal' to specify which haplotype these walks belong to
-    
-    Returns:
-        List of SeqRecord objects representing the assembled contigs
-    """
-    contigs = []
-    overlap_length = nx.get_edge_attributes(graph, 'overlap_length')
-    kmer_count_m = nx.get_node_attributes(graph, 'kmer_count_m')
-    kmer_count_p = nx.get_node_attributes(graph, 'kmer_count_p')
-    node_length = nx.get_node_attributes(graph, 'read_length')
-    
-    # Create wrong_kmer_count dictionary based on haplotype
-    if haplotype == 'maternal':
-        wrong_kmer_count = kmer_count_m  # Use kmer_count_m for wrong kmers (maternal haplotype)
-        print(f"Using maternal kmer counts for wrong kmer selection (maternal haplotype)")
-    elif haplotype == 'paternal':
-        wrong_kmer_count = kmer_count_p  # Use kmer_count_p for wrong kmers (paternal haplotype)
-        print(f"Using paternal kmer counts for wrong kmer selection (paternal haplotype)")
-    else:
-        raise ValueError(f"Invalid haplotype: {haplotype}. Must be 'maternal' or 'paternal'")
-   
-    for i, walk in enumerate(walks):
-        if len(walk) == 1:
-            # Single node walk
-            contig = Seq(str(n2s[str(walk[0])]))
-            contig = SeqIO.SeqRecord(contig)
-            contig.id = f'contig_{i+1}'
-            contig.description = f'length={len(contig)}'
-            contigs.append(contig)
-            continue
-            
-        # For each node in the walk, determine which basepairs it contributes
-        # and which node has the lowest wrong kmer count for each position
-        walk_nodes = []
-        for node in walk:
-            node_seq = str(n2s[str(node)])
-            node_wrong_kmers = wrong_kmer_count.get(node, 0)
-            node_len = node_length[node]
-            walk_nodes.append({
-                'node': node,
-                'sequence': node_seq,
-                'wrong_kmers': node_wrong_kmers,
-                'length': node_len
-            })
-        
-        # Calculate the total sequence length and create a wrong kmer matrix
-        # For each position, track which nodes contribute and their wrong kmer counts
-        total_length = 0
-        position_contributors = {}  # position -> list of (node_id, wrong_kmers, start_in_node, end_in_node)
-        
-        # First pass: calculate total length and identify all contributing positions
-        current_pos = 0
-        for j, node_info in enumerate(walk_nodes):
-            node_seq = node_info['sequence']
-            node_len = node_info['length']
-            node_wrong_kmers = node_info['wrong_kmers']
-            
-            if j == 0:
-                # First node contributes its full sequence
-                for pos in range(len(node_seq)):
-                    if current_pos + pos not in position_contributors:
-                        position_contributors[current_pos + pos] = []
-                    position_contributors[current_pos + pos].append((node_info['node'], node_wrong_kmers, pos, pos))
-                current_pos += len(node_seq)
-            else:
-                # Subsequent nodes: handle overlap
-                if j < len(walk_nodes):
-                    prev_node = walk_nodes[j-1]
-                    edge_key = (prev_node['node'], node_info['node'])
-                    
-                    if edge_key in overlap_length:
-                        ol_len = overlap_length[edge_key]
-                        
-                        # The new node contributes from position ol_len onwards
-                        # But it also contributes to the overlapping positions
-                        for pos in range(len(node_seq)):
-                            global_pos = current_pos - ol_len + pos
-                            
-                            if global_pos not in position_contributors:
-                                position_contributors[global_pos] = []
-                            
-                            # Add this node's contribution to this position
-                            position_contributors[global_pos].append((node_info['node'], node_wrong_kmers, pos, pos))
-                        
-                        # Update current position (only add the non-overlapping part)
-                        current_pos += len(node_seq) - ol_len
-                    else:
-                        # No overlap information, treat as no overlap
-                        for pos in range(len(node_seq)):
-                            if current_pos + pos not in position_contributors:
-                                position_contributors[current_pos + pos] = []
-                            position_contributors[current_pos + pos].append((node_info['node'], node_wrong_kmers, pos, pos))
-                        current_pos += len(node_seq)
-        
-        # Second pass: build the final sequence by choosing the contributor with lowest wrong kmer count for each position
-        final_sequence = ""
-        for pos in range(current_pos):
-            if pos in position_contributors:
-                # Find the contributor with lowest wrong kmer count for this position
-                best_contributor = min(position_contributors[pos], key=lambda x: x[1])
-                best_node_id, best_wrong_kmers, start_in_node, end_in_node = best_contributor
-                
-                # Get the sequence from the best node
-                best_node_seq = str(n2s[str(best_node_id)])
-                final_sequence += best_node_seq[start_in_node:end_in_node + 1]
-            else:
-                # This shouldn't happen, but add a placeholder if it does
-                final_sequence += "N"
-        
-        contig = Seq(final_sequence)
-        contig = SeqIO.SeqRecord(contig)
-        contig.id = f'contig_{i+1}'
-        contig.description = f'length={len(contig)}'
-        contigs.append(contig)
-
-    return contigs
-
-def walk_to_sequence_classic_support_and_overlap_aware(walks, graph, utg_node_to_node, raw_reads, old_graph):
-    """Classic reconstruction by expanding each node to its old read-id chain and stitching via old-graph overlaps.
-    This version includes both support-aware node filtering and support-aware overlap handling.
-    
-    walks: list of paths in the current graph (node ids)
-    graph: NetworkX graph with node support attributes
-    utg_node_to_node: mapping current node id -> list of old read ids (ordered)
-    raw_reads: dict mapping old read ids -> sequence (from reduced_reads_raw)
-    old_graph: NetworkX graph on old read ids with 'overlap_length' on edges
-    """
-
-    contigs = []
-    old_overlap = nx.get_edge_attributes(old_graph, 'overlap_length')
-    support = nx.get_node_attributes(graph, 'support')
-
-    utg_map = utg_node_to_node #normalize_utg_map(utg_node_to_node)
-
-    def expand_to_raw_ids(node_id):
-        # If this id directly corresponds to a raw read, return it
-        if str(node_id) in raw_reads:
-            return (node_id,)
-        # If this id can be expanded via the UTG map, recursively expand
-        if node_id in utg_map:
-            expanded = []
-            for child in utg_map[node_id]:
-                expanded.extend(expand_to_raw_ids(child))
-            return tuple(expanded)
-        # Unknown id; return empty
-        return tuple()
-
-    def filter_walk_by_support(walk):
-        """Filter walk by removing nodes with lower support than surrounding nodes when they have direct connection."""
-        if len(walk) <= 2:
-            return walk  # No filtering possible for walks of length 2 or less
-        
-        filtered_walk = [walk[0]]  # Always keep the first node
-        
-        for i in range(1, len(walk) - 1):
-            prev_node = walk[i - 1]
-            curr_node = walk[i]
-            next_node = walk[i + 1]
-            
-            # Check if surrounding nodes have a direct connection
-            has_direct_connection = graph.has_edge(prev_node, next_node)
-            
-            if has_direct_connection:
-                # Get support values (default to 0 if not available)
-                prev_support = support.get(prev_node, 0.0)
-                curr_support = support.get(curr_node, 0.0)
-                next_support = support.get(next_node, 0.0)
-                
-                # Remove current node if its support is lower than both surrounding nodes
-                if curr_support < prev_support and curr_support < next_support:
-                    print(f"Removing node {curr_node} (support: {curr_support}) from walk, keeping {prev_node}->{next_node} (supports: {prev_support}, {next_support})")
-                    continue  # Skip adding this node to filtered walk
-            
-            # Keep the current node
-            filtered_walk.append(curr_node)
-        
-        # Always keep the last node
-        filtered_walk.append(walk[-1])
-        
-        return filtered_walk
-
-    for i, walk in enumerate(walks):
-        if not walk:
-            continue
-
-        # Apply support-aware filtering to the walk
-        original_length = len(walk)
-        filtered_walk = filter_walk_by_support(walk)
-        if len(filtered_walk) < original_length:
-            print(f"Walk {i}: filtered from {original_length} to {len(filtered_walk)} nodes")
-
-        # Expand walk nodes into a flat sequence of old node ids
-        expanded_old_nodes = []
-        for node in filtered_walk:
-            chain = utg_map[node] #get_utg_chain_safe(node)
-            # If chain is empty, try interpreting the node as raw directly
-            if not chain:
-                if str(node) in raw_reads:
-                    chain = [int(node)]
-                else:
-                    print(f"Warning: No UTG mapping and not a raw read for node {node}")
-                    continue
-            for old_id in chain:
-                expanded_old_nodes.extend(expand_to_raw_ids(old_id))
-
-        # Stitch sequences using old overlaps with support-aware overlap handling
-        parts = []
-        prev_old = None
-        prev_node = None
-        
-        for j, old_id in enumerate(expanded_old_nodes):
-            if str(old_id) not in raw_reads:
-                print(f"Warning: raw read for id {old_id} not found; skipping this id")
-                prev_old = old_id
-                continue
-                
-            seq = raw_reads[str(old_id)]
-            
-            if prev_old is None or str(prev_old) not in raw_reads:
-                parts.append(seq)
-            else:
-                ol = old_overlap[(prev_old, old_id)]
-                ol_int = int(ol)
-                
-                # Always use support-aware overlap handling in this method
-                if prev_node is not None:
-                    # Find the current node in the walk that corresponds to this old_id
-                    curr_node = None
-                    for node in filtered_walk:
-                        if str(old_id) in raw_reads and str(old_id) == str(node):
-                            curr_node = node
-                            break
-                        # Check if old_id is in the expanded chain for this node
-                        if node in utg_map:
-                            for child in utg_map[node]:
-                                if str(old_id) in raw_reads and str(old_id) == str(child):
-                                    curr_node = node
-                                    break
-                            if curr_node:
-                                break
-                    
-                    if curr_node is not None:
-                        prev_support = support.get(prev_node, 0.0)
-                        curr_support = support.get(curr_node, 0.0)
-                        
-                        if curr_support > prev_support:
-                            # Current node has better support: add full sequence, remove overlap from previous
-                            if parts:
-                                # Remove the last overlap_length basepairs from the previous sequence
-                                parts[-1] = parts[-1][:-ol_int]
-                            parts.append(seq)
-                            print(f"Support-aware overlap: node {curr_node} (support: {curr_support}) preferred over {prev_node} (support: {prev_support}), using full sequence")
-                        else:
-                            # Previous node has better support: add sequence starting from overlap
-                            parts.append(seq[ol_int:])
-                            print(f"Support-aware overlap: node {prev_node} (support: {prev_support}) preferred over {curr_node} (support: {curr_support}), using sequence from overlap")
-                    else:
-                        # Fallback to standard behavior if we can't map old_id to a node
-                        parts.append(seq[ol_int:])
-                else:
-                    # Standard behavior: add sequence starting from overlap
-                    parts.append(seq[ol_int:])
-            
-            prev_old = old_id
-            # Update prev_node for next iteration
-            if j < len(expanded_old_nodes) - 1:
-                # Find the node in the walk that corresponds to the next old_id
-                next_old_id = expanded_old_nodes[j + 1]
-                for node in filtered_walk:
-                    if str(next_old_id) in raw_reads and str(next_old_id) == str(node):
-                        prev_node = node
-                        break
-                    # Check if next_old_id is in the expanded chain for this node
-                    if node in utg_map:
-                        for child in utg_map[node]:
-                            if str(next_old_id) in raw_reads and str(next_old_id) == str(child):
-                                prev_node = node
-                                break
-                        if prev_node:
-                            break
-
-        contig_seq = ''.join(parts)
-        contig = Seq(contig_seq)
-        contig = SeqIO.SeqRecord(contig)
-        contig.id = f'contig_{i+1}'
-        contig.description = f'length={len(contig)}'
-        contigs.append(contig)
-    return contigs
-
-def save_walks_and_sequences(nx_graph, walks, n2s, diploid, out_path, use_support_aware=False, support_aware_method=1):
+def save_walks_and_sequences(nx_graph, walks, n2s, diploid, out_path):
     if diploid:
         mat_walks, pat_walks = walks
         print(f"\nFound {len(mat_walks)} maternal and {len(pat_walks)} paternal paths")
@@ -891,24 +232,8 @@ def save_walks_and_sequences(nx_graph, walks, n2s, diploid, out_path, use_suppor
         pickle.dump(pat_walks, open(os.path.join(out_path, 'walks_paternal.pkl'), 'wb'))
         
         # Generate maternal and paternal contigs
-        if use_support_aware:
-            if support_aware_method == 1:
-                mat_contigs = walk_to_sequence_support_aware(mat_walks, nx_graph, n2s)
-                pat_contigs = walk_to_sequence_support_aware(pat_walks, nx_graph, n2s)
-            elif support_aware_method == 2:
-                mat_contigs = walk_to_sequence_support_aware_2(mat_walks, nx_graph, n2s)
-                pat_contigs = walk_to_sequence_support_aware_2(pat_walks, nx_graph, n2s)
-            elif support_aware_method == 3: # Added consensus voting
-                mat_contigs = walk_to_sequence_consensus_baselevel(mat_walks, nx_graph, n2s)
-                pat_contigs = walk_to_sequence_consensus_baselevel(pat_walks, nx_graph, n2s)
-            elif support_aware_method == 4: # Added wrong kmer
-                mat_contigs = walk_to_sequence_wrong_kmer(mat_walks, nx_graph, n2s, 'maternal')
-                pat_contigs = walk_to_sequence_wrong_kmer(pat_walks, nx_graph, n2s, 'paternal')
-            else:
-                raise ValueError(f"Unsupported support_aware_method: {support_aware_method}")
-        else:
-            mat_contigs = walk_to_sequence(mat_walks, nx_graph, n2s)
-            pat_contigs = walk_to_sequence(pat_walks, nx_graph, n2s)
+        mat_contigs = walk_to_sequence(mat_walks, nx_graph, n2s)
+        pat_contigs = walk_to_sequence(pat_walks, nx_graph, n2s)
         
         # Save maternal contigs as hap2.fasta (maternal)
         hap2_path = os.path.join(out_path, 'hap2.fasta')
@@ -932,116 +257,7 @@ def save_walks_and_sequences(nx_graph, walks, n2s, diploid, out_path, use_suppor
         os.makedirs(hap_dir, exist_ok=True)
         pickle.dump(walks, open(os.path.join(out_path, 'walks.pkl'), 'wb'))
         
-        if use_support_aware:
-            if support_aware_method == 1:
-                contigs = walk_to_sequence_support_aware(walks, nx_graph, n2s)
-            elif support_aware_method == 2:
-                contigs = walk_to_sequence_support_aware_2(walks, nx_graph, n2s)
-            elif support_aware_method == 3: # Added consensus voting
-                contigs = walk_to_sequence_consensus_baselevel(walks, nx_graph, n2s)
-            elif support_aware_method == 4: # Added wrong kmer
-                contigs = walk_to_sequence_wrong_kmer(walks, nx_graph, n2s, 'maternal')
-            else:
-                raise ValueError(f"Unsupported support_aware_method: {support_aware_method}")
-        else:
-            contigs = walk_to_sequence(walks, nx_graph, n2s)
-        eval.save_assembly(contigs, out_path, 0)
-
-def save_walks_and_sequences_classic(nx_graph, walks, utg_node_to_node, raw_reads, old_graph, diploid, out_path):
-    """Save walks and sequences using classic old-node stitching with overlaps from old graph."""
-    if diploid:
-        mat_walks, pat_walks = walks
-        print(f"\nFound {len(mat_walks)} maternal and {len(pat_walks)} paternal paths (classic)")
-        os.makedirs(out_path, exist_ok=True)
-        pickle.dump(mat_walks, open(os.path.join(out_path, 'walks_maternal.pkl'), 'wb'))
-        pickle.dump(pat_walks, open(os.path.join(out_path, 'walks_paternal.pkl'), 'wb'))
-        mat_contigs = walk_to_sequence_classic(mat_walks, nx_graph, utg_node_to_node, raw_reads, old_graph)
-        pat_contigs = walk_to_sequence_classic(pat_walks, nx_graph, utg_node_to_node, raw_reads, old_graph)
-        hap2_path = os.path.join(out_path, 'hap2.fasta')
-        SeqIO.write(mat_contigs, hap2_path, 'fasta')
-        hap1_path = os.path.join(out_path, 'hap1.fasta')
-        SeqIO.write(pat_contigs, hap1_path, 'fasta')
-        eval.save_assembly(mat_contigs, out_path, 0, '_maternal')
-        eval.save_assembly(pat_contigs, out_path, 0, '_paternal')
-        print(f"\nSaved diploid assemblies to: {out_path} (classic)")
-        print(f"  Maternal -> hap2.fasta")
-        print(f"  Paternal -> hap1.fasta")
-    else:
-        hap_dir = os.path.join(out_path)
-        os.makedirs(hap_dir, exist_ok=True)
-        pickle.dump(walks, open(os.path.join(out_path, 'walks.pkl'), 'wb'))
-        contigs = walk_to_sequence_classic(walks, nx_graph, utg_node_to_node, raw_reads, old_graph)
-        eval.save_assembly(contigs, out_path, 0)
-
-def save_walks_and_sequences_classic_support_aware(nx_graph, walks, utg_node_to_node, raw_reads, old_graph, diploid, out_path):
-    """Save walks and sequences using classic old-node stitching with overlaps from old graph and support-aware filtering."""
-    if diploid:
-        mat_walks, pat_walks = walks
-        print(f"\nFound {len(mat_walks)} maternal and {len(pat_walks)} paternal paths (classic with support-aware filtering)")
-        os.makedirs(out_path, exist_ok=True)
-        pickle.dump(mat_walks, open(os.path.join(out_path, 'walks_maternal.pkl'), 'wb'))
-        pickle.dump(pat_walks, open(os.path.join(out_path, 'walks_paternal.pkl'), 'wb'))
-        mat_contigs = walk_to_sequence_classic_support_aware(mat_walks, nx_graph, utg_node_to_node, raw_reads, old_graph)
-        pat_contigs = walk_to_sequence_classic_support_aware(pat_walks, nx_graph, utg_node_to_node, raw_reads, old_graph)
-        hap2_path = os.path.join(out_path, 'hap2.fasta')
-        SeqIO.write(mat_contigs, hap2_path, 'fasta')
-        hap1_path = os.path.join(out_path, 'hap1.fasta')
-        SeqIO.write(pat_contigs, hap1_path, 'fasta')
-        eval.save_assembly(mat_contigs, out_path, 0, '_maternal')
-        eval.save_assembly(pat_contigs, out_path, 0, '_paternal')
-        print(f"\nSaved diploid assemblies to: {out_path} (classic with support-aware filtering)")
-        print(f"  Maternal -> hap2.fasta")
-        print(f"  Paternal -> hap1.fasta")
-    else:
-        hap_dir = os.path.join(out_path)
-        os.makedirs(hap_dir, exist_ok=True)
-        pickle.dump(walks, open(os.path.join(out_path, 'walks.pkl'), 'wb'))
-        contigs = walk_to_sequence_classic_support_aware(walks, nx_graph, utg_node_to_node, raw_reads, old_graph)
-        eval.save_assembly(contigs, out_path, 0)
-
-def save_walks_and_sequences_support_aware(nx_graph, walks, n2s, diploid, out_path, n2s_method='support_aware'):
-    """
-    Save walks and sequences using support-aware sequence assembly.
-    This function always uses the support-aware version of walk_to_sequence.
-    
-    Args:
-        n2s_method: 'support_aware' for edge-based method, 'support_baselevel' for position-based method, 'consensus_baselevel' for consensus voting, 'wrong_kmer' for wrong kmer counts
-    """
-    use_support_aware = True
-    if n2s_method == 'support_baselevel':
-        support_aware_method = 2
-    elif n2s_method == 'consensus_baselevel':
-        support_aware_method = 3
-    elif n2s_method == 'wrong_kmer':
-        support_aware_method = 4
-    else:
-        support_aware_method = 1
-    return save_walks_and_sequences(nx_graph, walks, n2s, diploid, out_path, use_support_aware=use_support_aware, support_aware_method=support_aware_method)
-
-def save_walks_and_sequences_classic_support_and_overlap_aware(nx_graph, walks, utg_node_to_node, raw_reads, old_graph, diploid, out_path):
-    """Save walks and sequences using classic old-node stitching with overlaps from old graph, support-aware filtering, and support-aware overlap handling."""
-    if diploid:
-        mat_walks, pat_walks = walks
-        print(f"\nFound {len(mat_walks)} maternal and {len(pat_walks)} paternal paths (classic with support-aware filtering and overlap handling)")
-        os.makedirs(out_path, exist_ok=True)
-        pickle.dump(mat_walks, open(os.path.join(out_path, 'walks_maternal.pkl'), 'wb'))
-        pickle.dump(pat_walks, open(os.path.join(out_path, 'walks_paternal.pkl'), 'wb'))
-        mat_contigs = walk_to_sequence_classic_support_and_overlap_aware(mat_walks, nx_graph, utg_node_to_node, raw_reads, old_graph)
-        pat_contigs = walk_to_sequence_classic_support_and_overlap_aware(pat_walks, nx_graph, utg_node_to_node, raw_reads, old_graph)
-        hap2_path = os.path.join(out_path, 'hap2.fasta')
-        SeqIO.write(mat_contigs, hap2_path, 'fasta')
-        hap1_path = os.path.join(out_path, 'hap1.fasta')
-        SeqIO.write(pat_contigs, hap1_path, 'fasta')
-        eval.save_assembly(mat_contigs, out_path, 0, '_maternal')
-        eval.save_assembly(pat_contigs, out_path, 0, '_paternal')
-        print(f"\nSaved diploid assemblies to: {out_path} (classic with support-aware filtering and overlap handling)")
-        print(f"  Maternal -> hap2.fasta")
-        print(f"  Paternal -> hap1.fasta")
-    else:
-        hap_dir = os.path.join(out_path)
-        os.makedirs(hap_dir, exist_ok=True)
-        pickle.dump(walks, open(os.path.join(out_path, 'walks.pkl'), 'wb'))
-        contigs = walk_to_sequence_classic_support_and_overlap_aware(walks, nx_graph, utg_node_to_node, raw_reads, old_graph)
+        contigs = walk_to_sequence(walks, nx_graph, n2s)
         eval.save_assembly(contigs, out_path, 0)
 
 def get_refs(args, diploid, single_chrom=False, ref_key=None):
@@ -1234,10 +450,6 @@ def main_entry(argv=None):
     parser.add_argument('--skip_decode', action='store_true', default=False, help='Skip decoding')
     parser.add_argument('--ass_out_dir', type=str, default=None, help='Output directory for assemblies')
     parser.add_argument('--load_node_scores', type=str, default=None, help='Path to pickled dictionary of node scores')
-    parser.add_argument('--hifiasm_res_based', action='store_true', default=False, help='Use hifiasm_result as base score')
-    parser.add_argument('--n2s', type=str, default='default', choices=['default', 'support_aware', 'support_baselevel', 'consensus_baselevel', 'wrong_kmer', 'classic_nodes', 'classic_nodes_support_aware', 'classic_nodes_support_and_overlap_aware'], help='Sequence assembly method (default: standard, support_aware: edge-based support-aware, support_baselevel: position-based support-aware, consensus_baselevel: consensus voting, wrong_kmer: wrong kmer counts, classic_nodes: build node->sequence from classic reads, classic_nodes_support_aware: classic nodes with support-aware filtering, classic_nodes_support_and_overlap_aware: classic nodes with support-aware filtering and overlap handling)')
-    # Note: double_model is automatically determined based on strategy reduction type ('cut_and_top_p')
-
     args = parser.parse_args(argv)
     log(f"Arguments parsed: {vars(args)}")
     
@@ -1280,11 +492,9 @@ def main_entry(argv=None):
     with open(args.strategy_config) as file:
         strategies = yaml.safe_load(file)
     
-    # Automatically determine if double model should be used based on strategy
+    # Get strategy configuration
     strategy_config = strategies[args.strategy]
-    double_model = strategy_config['double_model'] #strategy_config.get('reduction') == 'cut_and_top_p'
-
-    log(f"Strategy '{args.strategy}' uses reduction: '{strategy_config.get('reduction')}' -> double_model: {double_model}")
+    log(f"Strategy '{args.strategy}' uses reduction: '{strategy_config.get('reduction')}'")
     
     # Load NetworkX graph
     log(f"Loading NetworkX graph from {nx_path}")
@@ -1324,62 +534,35 @@ def main_entry(argv=None):
         print(sum(gt_bin_scores.values()))
         #exit()
 
-        if double_model:
-            # For double models with labels, use gt_bin as 'score' and malicious as 'to_cut'
-            log("Using double model with ground truth labels: gt_bin -> score, malicious -> to_cut")
-            
-            # Get gt_bin attributes for score
-            scores = nx.get_edge_attributes(nx_graph, 'hifiasm_result')
-            #unknown = nx.get_edge_attributes(nx_graph, 'unknown')
-            #scores = {edge: 0.5 if unknown.get(edge, False) else gt_bin_scores[edge] for edge in nx_graph.edges()}
-            for edge in nx_graph.edges():
-                if edge not in scores:
-                    scores[edge] = 0
-            # Apply score flipping if configured
-            if strategy_config.get('flip_score', False):
-                print("Flipping scores: 1 - score")
-                scores = {edge: 1 - score for edge, score in scores.items()}
-            
-            nx.set_edge_attributes(nx_graph, scores, 'score')
-            
-            # Get malicious attributes for to_cut
-            malicious_scores = nx.get_edge_attributes(nx_graph, 'malicious')
-            # Handle missing malicious attributes gracefully
-            to_cut_scores = {edge: malicious_scores[edge] for edge in nx_graph.edges()}
-            
-            nx.set_edge_attributes(nx_graph, to_cut_scores, 'to_cut')
-            
-            log(f"Set {len(scores)} edges with 'score' from gt_bin")
-            log(f"Set {len(to_cut_scores)} edges with 'to_cut' from malicious")
-            
-        else:
-            # Original single model label handling
-            if strategies[args.strategy]['gt_score'] == 'hifiasm_result':
-                scores = nx.get_edge_attributes(nx_graph, 'hifiasm_result')
-                # Fill edges that don't have hifiasm_result attribute with 0
-                for edge in nx_graph.edges():
-                    if edge not in scores:
-                        scores[edge] = 0
-                #unknown = nx.get_edge_attributes(nx_graph, 'unknown')
-                #scores = {edge: 0.5 if unknown.get(edge, False) else scores_[edge] for edge in nx_graph.edges()}
-                #scores_1 = nx.get_edge_attributes(nx_graph, 'strand_change')
-                #scores_0 = nx.get_edge_attributes(nx_graph, 'cross_chr')
-                #scores = {edge: 0 if scores_1[edge] or scores_0[edge] else 1 for edge in nx_graph.edges()}
-            elif strategies[args.strategy]['gt_score'] == 'uniform':
-                scores = {edge: 1 for edge in nx_graph.edges()}
-            else:
-                scores = nx.get_edge_attributes(nx_graph, strategies[args.strategy]['gt_score'])
-            
-            # Apply score flipping if configured
-            if strategy_config.get('flip_score', False):
-                print("Flipping scores: 1 - score")
-                scores = {edge: 1 - score for edge, score in scores.items()}
-            
-            nx.set_edge_attributes(nx_graph, scores, 'score')
-            nx.set_edge_attributes(nx_graph, scores, 'hifiasm_result')
+        # For double models with labels, use gt_bin as 'score' and malicious as 'to_cut'
+        log("Using double model with ground truth labels: gt_bin -> score, malicious -> to_cut")
+        
+        # Get gt_bin attributes for score
+        scores = nx.get_edge_attributes(nx_graph, 'hifiasm_result')
+        #unknown = nx.get_edge_attributes(nx_graph, 'unknown')
+        #scores = {edge: 0.5 if unknown.get(edge, False) else gt_bin_scores[edge] for edge in nx_graph.edges()}
+        for edge in nx_graph.edges():
+            if edge not in scores:
+                scores[edge] = 0
+        # Apply score flipping if configured
+        if strategy_config.get('flip_score', False):
+            print("Flipping scores: 1 - score")
+            scores = {edge: 1 - score for edge, score in scores.items()}
+        
+        nx.set_edge_attributes(nx_graph, scores, 'score')
+        
+        # Get malicious attributes for to_cut
+        malicious_scores = nx.get_edge_attributes(nx_graph, 'malicious')
+        # Handle missing malicious attributes gracefully
+        to_cut_scores = {edge: malicious_scores[edge] for edge in nx_graph.edges()}
+        
+        nx.set_edge_attributes(nx_graph, to_cut_scores, 'to_cut')
+        
+        log(f"Set {len(scores)} edges with 'score' from gt_bin")
+        log(f"Set {len(to_cut_scores)} edges with 'to_cut' from malicious")
 
     else:
-        save_dict = compute_scores(dgl_path, args.model, config, out_score_path, device='cpu', double_model=double_model)
+        save_dict = compute_scores(dgl_path, args.model, config, out_score_path, device='cpu')
         # Add scores to NetworkX graph
         print("Adding scores to NetworkX graph")
         edge_scores = save_dict['edge_scores']
@@ -1413,8 +596,8 @@ def main_entry(argv=None):
             print(f"Assigning default score of 0.5 to {len(missing_edges)} missing edges")
             for edge in missing_edges:
                 edge_scores[edge] = 0.5  # Default neutral score
-                # Also assign default cut score for double models
-                if double_model and 'cut_scores' in save_dict:
+                # Also assign default cut score
+                if 'cut_scores' in save_dict:
                     save_dict['cut_scores'][edge] = 0.5
         
         # Apply score flipping if configured
@@ -1425,102 +608,26 @@ def main_entry(argv=None):
         # Add scores to graph
         nx.set_edge_attributes(nx_graph, edge_scores, 'score')
         
-        # For double models, also add cut scores as 'to_cut'
-        if double_model and 'cut_scores' in save_dict:
+        # Add cut scores as 'to_cut'
+        if 'cut_scores' in save_dict:
             cut_scores = save_dict['cut_scores']
             
             nx.set_edge_attributes(nx_graph, cut_scores, 'to_cut')
-            print(f"Added 'to_cut' scores from malicious head for double model")
+            print(f"Added 'to_cut' scores from malicious head")
     
     diploid = bool(nx.get_node_attributes(nx_graph, 'yak_region'))  # True if dict is not empty, False otherwise
     print(f"Diploid mode: {diploid}")
     
-    if args.n2s == 'support_aware':
-        log("Using support-aware sequence assembly for overlaps")
-        log("Using original support-aware method (edge-based)")
-    elif args.n2s == 'support_baselevel':
-        log("Using support-aware sequence assembly for overlaps")
-        log("Using position-based support-aware method (basepair-level)")
-    elif args.n2s == 'consensus_baselevel':
-        log("Using support-aware sequence assembly for overlaps")
-        log("Using consensus voting basepair-level method")
-    elif args.n2s == 'wrong_kmer':
-        log("Using support-aware sequence assembly for overlaps")
-        log("Using wrong kmer counts basepair-level method")
-    elif args.n2s == 'classic_nodes':
-        log("Using classic node-based sequence assembly (prefix stitching on classic reads)")
-    elif args.n2s == 'classic_nodes_support_aware':
-        log("Using classic node-based sequence assembly with support-aware filtering")
-    elif args.n2s == 'classic_nodes_support_and_overlap_aware':
-        log("Using classic node-based sequence assembly with support-aware filtering and overlap handling")
+    # Using default sequence assembly method
     
     if not args.skip_decode:
         # Start inference with diploid parameter and graphic_scores
-        if args.hifiasm_res_based:
-            walks = hifiasm_res_based_inference.get_walks(nx_graph, strategies[args.strategy], diploid, graphic_scores=graphic_scores)
-        else:
-            walks = inference.get_walks(nx_graph, strategies[args.strategy], diploid, graphic_scores=graphic_scores)
+        walks = inference.get_walks(nx_graph, strategies[args.strategy], diploid, graphic_scores=graphic_scores)
  
-        if args.n2s == 'classic_nodes':
-            # Build node->sequence by expanding to old read ids using UTG mapping, then assemble using old overlaps
-            reads_path_raw = os.path.join(args.dataset, 'reduced_reads_raw', args.filename + '.fasta')
-            utg_map_path = os.path.join(args.dataset, 'utg_node_to_node', args.filename + '.pkl')
-            old_nx_path = os.path.join(args.dataset, 'nx_full_graphs', args.filename + '.pkl')
-            log(f"Classic reads (raw) path: {reads_path_raw}")
-            log(f"UTG node-to-node map path: {utg_map_path}")
-            log(f"Old NX graph path: {old_nx_path}")
-            classic_reads = load_reads(reads_path_raw)
-            with open(utg_map_path, 'rb') as f:
-                utg_node_to_node = pickle.load(f)
-            with open(old_nx_path, 'rb') as f:
-                old_nx_graph = pickle.load(f)
- 
-            save_walks_and_sequences_classic(nx_graph, walks, utg_node_to_node, classic_reads, old_nx_graph, diploid, args.ass_out_dir)
-        elif args.n2s == 'classic_nodes_support_aware':
-            # Build node->sequence by expanding to old read ids using UTG mapping, then assemble using old overlaps with support-aware filtering
-            reads_path_raw = os.path.join(args.dataset, 'reduced_reads_raw', args.filename + '.fasta')
-            utg_map_path = os.path.join(args.dataset, 'utg_node_to_node', args.filename + '.pkl')
-            old_nx_path = os.path.join(args.dataset, 'nx_full_graphs', args.filename + '.pkl')
-            log(f"Classic reads (raw) path: {reads_path_raw}")
-            log(f"UTG node-to-node map path: {utg_map_path}")
-            log(f"Old NX graph path: {old_nx_path}")
-            classic_reads = load_reads(reads_path_raw)
-            with open(utg_map_path, 'rb') as f:
-                utg_node_to_node = pickle.load(f)
-            with open(old_nx_path, 'rb') as f:
-                old_nx_graph = pickle.load(f)
- 
-            save_walks_and_sequences_classic_support_aware(nx_graph, walks, utg_node_to_node, classic_reads, old_nx_graph, diploid, args.ass_out_dir)
-        elif args.n2s == 'classic_nodes_support_and_overlap_aware':
-            # Build node->sequence by expanding to old read ids using UTG mapping, then assemble using old overlaps with support-aware filtering and overlap handling
-            reads_path_raw = os.path.join(args.dataset, 'reduced_reads_raw', args.filename + '.fasta')
-            utg_map_path = os.path.join(args.dataset, 'utg_node_to_node', args.filename + '.pkl')
-            old_nx_path = os.path.join(args.dataset, 'nx_full_graphs', args.filename + '.pkl')
-            log(f"Classic reads (raw) path: {reads_path_raw}")
-            log(f"UTG node-to-node map path: {utg_map_path}")
-            log(f"Old NX graph path: {old_nx_path}")
-            classic_reads = load_reads(reads_path_raw)
-            with open(utg_map_path, 'rb') as f:
-                utg_node_to_node = pickle.load(f)
-            with open(old_nx_path, 'rb') as f:
-                old_nx_graph = pickle.load(f)
- 
-            save_walks_and_sequences_classic_support_and_overlap_aware(nx_graph, walks, utg_node_to_node, classic_reads, old_nx_graph, diploid, args.ass_out_dir)
-        else:
-            reads = load_reads(reads_path)
-            
-            # Determine support_aware_method based on n2s argument
-            use_support_aware = args.n2s in ['support_aware', 'support_baselevel', 'consensus_baselevel', 'wrong_kmer']
-            if args.n2s == 'support_baselevel':
-                support_aware_method = 2
-            elif args.n2s == 'consensus_baselevel':
-                support_aware_method = 3
-            elif args.n2s == 'wrong_kmer':
-                support_aware_method = 4
-            else:
-                support_aware_method = 1
-            
-            save_walks_and_sequences(nx_graph, walks, reads, diploid, args.ass_out_dir, use_support_aware=use_support_aware, support_aware_method=support_aware_method)
+        # Use default sequence assembly method
+        reads = load_reads(reads_path)
+        
+        save_walks_and_sequences(nx_graph, walks, reads, diploid, args.ass_out_dir)
 
     if not args.skip_synthetic_eval:
         evaluate_synthetic(nx_graph, config, args.ass_out_dir, diploid)

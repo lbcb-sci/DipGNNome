@@ -137,16 +137,6 @@ class SymGatedGCN(nn.Module):
             # Forward-message passing
             g.apply_edges(fn.u_add_v('B1h', 'B2h', 'B12h'))
             e_ji = g.edata['B12h'] + g.edata['B3e']
-            
-            # Debug: Check if e_ji is None
-            if e_ji is None:
-                print(f"DEBUG: e_ji is None")
-                print(f"DEBUG: g.edata['B12h'] = {g.edata['B12h']}")
-                print(f"DEBUG: g.edata['B3e'] = {g.edata['B3e']}")
-                print(f"DEBUG: g.edata keys = {list(g.edata.keys())}")
-                print(f"DEBUG: g.ndata keys = {list(g.ndata.keys())}")
-                raise ValueError("e_ji is None - check edge data initialization")
-            
             e_ji = self.bn_e(e_ji)
             e_ji = F.relu(e_ji)
             if self.residual:
