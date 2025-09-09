@@ -137,7 +137,7 @@ def get_walks(nx_graph, config, diploid=False, symmetry=True, graphic_scores=Fal
     
     nx_graph = reduce_and_cut.reduction(nx_graph, config, diploid, symmetry)
     after_reduction = nx_graph.number_of_edges()
-    print(f"Removed { initial_edges - after_reduction} edges during {config['reduction']} reduction ({initial_edges} -> {after_reduction})")
+    print(f"Removed { initial_edges - after_reduction} edges during reduction ({initial_edges} -> {after_reduction})")
     
     components = find_components(nx_graph, min_component_size=config['min_component_size'])
     #components = [nx_graph]
