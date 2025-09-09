@@ -13,7 +13,7 @@ beam:
   gt_score: 'score'  
   c_t: 0.5
   c_b: 0.9
-  flip_score: True
+  flip_score: False
 
   min_component_size: 25
   min_walk_length: 100000
@@ -35,7 +35,7 @@ greedy:
   gt_score: 'score'  
   c_t: 0.5
   c_b: 0.9
-  flip_score: True
+  flip_score: False
 
   min_component_size: 25
   min_walk_length: 100000
@@ -57,7 +57,7 @@ graphic:
   gt_score: 'score'  
   c_t: 0.5
   c_b: 0.9
-  flip_score: True
+  flip_score: False
 
   min_component_size: 25
   min_walk_length: 100000
