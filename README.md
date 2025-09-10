@@ -2,19 +2,25 @@
 
 **The first deep learning–based assembler for diploid *de novo* genome assembly**
 
+<p align="center">
+  <img src="dipgnnome_image.png" width="800" title="Framework">
+</p>
+Figure generated with Midjourney.
+
+
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-1.12+-red.svg)](https://pytorch.org/)
 [![DGL](https://img.shields.io/badge/DGL-1.0+-green.svg)](https://www.dgl.ai/)
 
 ## Overview
 
-We present **DipGNNome**, the first deep learning–based assembler for diploid *de novo* genome assembly. Our contributions are threefold:
+**DipGNNome** is the first deep learning–based assembler for diploid *de novo* genome assembly, containing following features: 
 
-1. **First ML-ready assembly graph pipeline**: We introduce the first publicly available pipeline for constructing machine learning–ready assembly graphs with ground-truth labels, enabling supervised training in the diploid setting.
+1. **First ML-ready assembly graph pipeline**: We implement the first publicly available pipeline for constructing machine learning–ready assembly graphs with ground-truth labels, enabling supervised training in the diploid setting.
 
 2. **Novel assembly algorithm**: We develop an assembly algorithm that integrates model predictions with a beam search strategy to efficiently traverse long, string-like graphs with limited branching, a design that may generalize to other path-finding tasks.
 
-3. **Competitive performance**: We show that a GNN-based assembler can achieve competitive accuracy, rivaling state-of-the-art methods while following a fundamentally different, learning-driven paradigm.
+3. **Competitive performance**: We show that a GNN-based assembler can achieve comparable assemblies to state-of-the-art methods while following a fundamentally different, learning-driven paradigm.
 
 ## Architecture
 
@@ -241,13 +247,6 @@ DipGNNome achieves comparable performance to state-of-the-art diploid assemblers
 | | Switch Err (%) | 7.3 / 8.9 | 7.2 / 8.8 | **6.9** / **8.7** |
 | | Hamming Err (%) | 7.7 / 9.6 | **7.5** / **9.0** | 7.8 / 10.7 |
 
-**Key Performance Highlights:**
-- **Accuracy**: Rivals traditional assembly methods across multiple genomes
-- **Efficiency**: Optimized beam search for large graphs
-- **Scalability**: Handles diploid genomes with complex heterozygosity patterns
-- **Competitive Results**: Shows strong performance in NG50, NGA50, and error metrics
-- **Bold values** indicate the best performance for each metric
-
 *Note: Values are shown as paternal/maternal haplotypes.*
 
 ## Citation
@@ -260,7 +259,7 @@ To be made citable..
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+This project is licensed under the BSD 3-Clause License - see the LICENSE file for details.
 
 ## Support
 
@@ -271,9 +270,7 @@ For questions about usage or methodology, please open an issue on GitHub.
 ## Acknowledgments
 
 - Built on top of [hifiasm](https://github.com/chhylp123/hifiasm) for initial assembly
-- Uses [DGL](https://www.dgl.ai/) for graph neural network operations
-- Inspired by advances in graph-based genome assembly and deep learning
-
+- Extends [GNNome](https://github.com/lbcb-sci/GNNome/tree/main), the first haploid genome assembly using deep learning
 ---
 
-**DipGNNome** - Pioneering the future of diploid genome assembly through deep learning.
+**DipGNNome** - diploid genome assembly through deep learning.
