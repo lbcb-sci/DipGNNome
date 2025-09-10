@@ -4,7 +4,6 @@ channels:
   - pytorch
   - nvidia
   - bioconda
-  - defaults
 
 dependencies:
   # Python version
