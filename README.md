@@ -1,16 +1,14 @@
 # DipGNNome
 
 **The first deep learning–based assembler for diploid *de novo* genome assembly**
+[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+[![PyTorch](https://img.shields.io/badge/PyTorch-1.12+-red.svg)](https://pytorch.org/)
+[![DGL](https://img.shields.io/badge/DGL-1.0+-green.svg)](https://www.dgl.ai/)
 
 <p align="center">
   <img src="dipgnnome_image.png" width="800" title="Framework">
 </p>
 Figure generated with Midjourney.
-
-
-[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
-[![PyTorch](https://img.shields.io/badge/PyTorch-1.12+-red.svg)](https://pytorch.org/)
-[![DGL](https://img.shields.io/badge/DGL-1.0+-green.svg)](https://www.dgl.ai/)
 
 ## Overview
 
@@ -87,16 +85,14 @@ pip install -r requirements.txt
 # Install external tools (see INSTALLATION.md for details)
 ```
 
-### Verification
 
-Test your installation:
-```bash
-# Set environment variable for macOS OpenMP conflicts
-export KMP_DUPLICATE_LIB_OK=TRUE
-python test_debug.py
-```
+DipGNNome includes a pre-trained model (`dipgnnome_trained.pt`) that has been trained on synthetic diploid data. This allows you to skip the training step and directly perform genome assembly;
+
 
 ## Usage
+
+DipGNNome includes a pre-trained model (`dipgnnome_trained.pt`) that has been trained on synthetic diploid data. This allows you to skip the training step and directly perform genome assembly;
+
 
 ### 1. Data Generation
 Generate unitig graphs with haplotype information from HiFi reads:
@@ -124,7 +120,7 @@ Run diploid genome assembly using the trained model:
 
 ```bash
 python decoding/main.py \
-    --model /path/to/trained/model.pt \
+    --model dipgnnome_trained.pt \
     --ref reference_genome_name \
     --ass_out_dir /path/to/output/ \
     --filename output_prefix \
@@ -146,7 +142,7 @@ python decoding/main.py \
 - `--wandb`: Weights & Biases project name for experiment tracking
 
 #### Assembly (`decoding/main.py`)
-- `--model`: Path to trained model checkpoint
+- `--model`: Path to trained model checkpoint (use `dipgnnome_trained.pt` for pre-trained model)
 - `--ref`: Reference genome identifier
 - `--ass_out_dir`: Output directory for assembly results
 - `--filename`: Prefix for output files
