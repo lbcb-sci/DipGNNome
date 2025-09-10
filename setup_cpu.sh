@@ -19,7 +19,7 @@ fi
 
 # Create the conda environment
 echo "Creating conda environment 'dipgnnome_cpu'..."
-conda env create -f environment_cpu.yml
+conda env create -f environment_cpu.yml --channel conda-forge
 
 # Activate the environment and install additional dependencies
 echo ""
