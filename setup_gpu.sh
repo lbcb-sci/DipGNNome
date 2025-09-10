@@ -26,7 +26,7 @@ fi
 
 # Create the conda environment
 echo "Creating conda environment 'dipgnnome_gpu'..."
-conda env create -f environment_gpu.yml --channel conda-forge
+conda env create -f environment_gpu.yml
 
 # Activate the environment and install additional dependencies
 echo ""
