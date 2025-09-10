@@ -42,13 +42,6 @@ DipGNNome operates in three main stages:
 - Trained GNN scores edges for optimal path selection
 - Beam search algorithm reconstructs phased maternal and paternal haplotypes
 
-## Key Features
-
-- 🧬 **Diploid-aware assembly**: Handles heterozygous regions and phase information
-- 🤖 **Deep learning integration**: Uses Graph Neural Networks for path prediction
-- ⚡ **Efficient beam search**: Optimized traversal of assembly graphs
-- 🔧 **Modular design**: Separate components for data generation, training, and assembly
-
 ## Quick Start
 
 ### Prerequisites
@@ -270,4 +263,4 @@ For questions about usage or methodology, please open an issue on GitHub.
 - Extends [GNNome](https://github.com/lbcb-sci/GNNome/tree/main), the first haploid genome assembly using deep learning
 ---
 
-**DipGNNome** - diploid genome assembly through deep learning.
+**DipGNNome** - diploid de novo Genome Assembly using Graph Neural Networks.
