@@ -102,7 +102,7 @@ Train the Graph Neural Network on synthetic diploid data:
 ```bash
 python training/train.py \
     --data_path /path/to/training/graphs/ \
-    --data_config configs/dataset_full_i002c.yml \
+    --data_config configs/example_data_config.yml \
     --device cuda:0 \
     --run_name your_experiment_name \
     --wandb your_wandb_project
@@ -184,8 +184,29 @@ DipGNNome/
 DipGNNome uses YAML configuration files for easy customization:
 
 - `configs/config.yml` - Main training and model parameters
-- `configs/dataset_*.yml` - Dataset-specific configurations
+- `configs/example_data_config.yml` - Example dataset configuration with placeholder paths
+- `configs/dataset_*.yml` - Dataset-specific configurations (legacy/example variants)
 - `decoding/decode_strategies.yml` - Assembly strategy parameters
+
+### Configure local paths
+
+Update the following placeholders in `configs/example_data_config.yml` to match your environment:
+
+```
+paths:
+  pbsim_path: /path/to/pbsim3            # or use vendor/pbsim3 after `python install_tools.py`
+  hifiasm_path: /path/to/hifiasm_025/    # directory containing the hifiasm binary
+  hifiasm_dump: /path/to/hifiasm_dump    # writable temp directory for hifiasm dumps
+  yak_path: /path/to/yak                 # or vendor/yak after `python install_tools.py`
+  centromere_coords: /path/to/centromere_coordinates.yml
+```
+
+Notes:
+- Running `python install_tools.py` installs third-party tools under `vendor/`. If you use that, set:
+  - `yak_path: vendor/yak`
+  - `pbsim_path: vendor/pbsim3`
+  - You still need to provide `hifiasm_path` if not installed system-wide.
+- Prefer paths relative to the repository root (e.g., `data/...`, `vendor/...`).
 
 ## Performance
 

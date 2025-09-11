@@ -1476,33 +1476,3 @@ def is_synthetic_data(graph):
         print("Detected real data (no coordinate attributes)")
     
     return is_synthetic
-
-def main():
-    
-    graph_path = "/mnt/sod2-project/csb4/wgs/martin/diploid_datasets/hg002_one_each/nx_graphs/hg002_v101_chr19_0.pkl"
-    reads_fasta = "/mnt/sod2-project/csb4/wgs/martin/diploid_datasets/hg002_one_each/reduced_reads/hg002_v101_chr19_0.pkl"
-    
-    output_fasta = "/mnt/sod2-project/csb4/wgs/martin/diploid_datasets/hg002_one_each/reduced_reads/hg002_v101_chr19_101.fasta"
-    output_graph = "/mnt/sod2-project/csb4/wgs/martin/diploid_datasets/hg002_one_each/nx_graphs/hg002_v101_chr19_101.pkl"
-    output_gfa_path = "/mnt/sod2-project/csb4/wgs/martin/diploid_datasets/hg002_one_each/nx_graphs/hg002_v101_chr19_101.gfa"
-    utgnode_to_node_path = "/mnt/sod2-project/csb4/wgs/martin/diploid_datasets/hg002_one_each/nx_graphs/hg002_v101_chr19_101_utg_to_nodes.pkl"
-
-    """
-    graph_path = "/mnt/sod2-project/csb4/wgs/martin/diploid_datasets/benchmark_hifiasm/utg_test/nx_graphs/hg002_v101_chr19_3.pkl"
-    reads_fasta = "/mnt/sod2-project/csb4/wgs/martin/diploid_datasets/benchmark_hifiasm/utg_test/reduced_reads/hg002_v101_chr19_3.fasta"
-    
-    output_fasta = "/mnt/sod2-project/csb4/wgs/martin/diploid_datasets/benchmark_hifiasm/utg_test/reduced_reads/hg002_v101_chr19_7.fasta"
-    output_graph = "/mnt/sod2-project/csb4/wgs/martin/diploid_datasets/benchmark_hifiasm/utg_test/nx_graphs/hg002_v101_chr19_7.pkl"
-    output_gfa_path = "/mnt/sod2-project/csb4/wgs/martin/diploid_datasets/benchmark_hifiasm/utg_test/nx_graphs/hg002_v101_chr19_7.gfa"
-    
-    graph_path = "/Users/schmitzmf/workspace/diploid_gnnome/data/sym_dataset/nx_graphs/mSymSyn1_v2_chr19_0.pkl"
-    reads_fasta = "/Users/schmitzmf/workspace/diploid_gnnome/data/sym_dataset/reduced_reads/mSymSyn1_v2_chr19_0.fasta"
-    
-    output_fasta = "/Users/schmitzmf/workspace/diploid_gnnome/data/sym_dataset/reads/mSymSyn1_v2_chr19_1.fasta"
-    output_graph = "/Users/schmitzmf/workspace/diploid_gnnome/data/sym_dataset/nx_graphs/mSymSyn1_v2_chr19_1.pkl"
-    output_gfa_path = "/Users/schmitzmf/workspace/diploid_gnnome/data/sym_dataset/gfa/mSymSyn1_v2_chr19_1.gfa"
-    """
-    load_and_simplify_graph(graph_path, reads_fasta, utgnode_to_node_path, output_fasta, output_graph, output_gfa_path)
-
-if __name__ == "__main__":
-    main()

@@ -257,71 +257,6 @@ def save_walks_and_sequences(nx_graph, walks, n2s, diploid, out_path):
         contigs = walk_to_sequence(walks, nx_graph, n2s)
         eval.save_assembly(contigs, out_path, 0)
 
-def get_refs(args, diploid, single_chrom=False, ref_key=None):
-    """
-    Get reference paths based on configuration and arguments.
-    
-    Args:
-        args: Command line arguments
-        ref_config: Reference configuration dictionary
-        diploid: Boolean indicating if diploid mode should be used
-        single_chrom: Boolean indicating if processing a single chromosome
-        ref_key: Reference key for specific genome references
-    
-    Returns:
-        Dictionary containing reference paths and related information
-    """
-
-    # Load decoding paths configuration
-    with open('configs/decoding_paths.yml', 'r') as file:
-        decoding_paths = yaml.safe_load(file)
-    # Get reference paths based on the provided key
-    ref_config = decoding_paths[ref_key]
-    refs = {}
-    
-    if diploid:
-        if single_chrom:
-            chr_literal = re.findall(r'chr\d+(?:_c)?', args.filename)[0]
-            if chr_literal.endswith('_c'):
-                chr_refs = ref_config['cent_refs']
-                chr_nocent = chr_literal.split('_')[0]
-                ref_m = os.path.join(chr_refs, f'{chr_nocent}_M_c.fasta')
-                ref_p = os.path.join(chr_refs, f'{chr_nocent}_P_c.fasta')
-            else:
-                chr_refs = ref_config['chr_refs']
-                ref_m = os.path.join(chr_refs, f'{chr_literal}_M.fasta')
-                ref_p = os.path.join(chr_refs, f'{chr_literal}_P.fasta')
-        else:
-            ref_m = ref_config['mat_ref']
-            ref_p = ref_config['pat_ref']
-        
-        refs['ref_m'] = ref_m
-        refs['ref_p'] = ref_p
-        refs['mat_yak'] = ref_config['mat_yak']
-        refs['pat_yak'] = ref_config['pat_yak']
-        refs['idx_m'] = ref_m + '.fai'
-        refs['idx_p'] = ref_p + '.fai'
-    else:
-        if single_chrom:
-            chr_literal = re.findall(r'chr\d+(?:_[MP])?(?:_c)?', args.filename)[0]
-            if chr_literal.endswith('_c'):
-                chr_refs = ref_config['cent_refs']
-            else:
-                chr_refs = ref_config['chr_refs']
-            
-            if ref_key in ['arabidopsis', 'arabidopsis_col_cc']:
-                ref = os.path.join(chr_refs, f'{chr_literal}.fasta')
-            elif ref_key in ['hg002']:
-                ref = os.path.join(chr_refs, f'{chr_literal}_MATERNAL.fasta')
-            else:
-                ref = os.path.join(chr_refs, f'{chr_literal}_M.fasta')
-        else:
-            ref = ref_config['full_ref']
-        
-        refs['ref'] = ref
-        refs['idx'] = ref + '.fai'
-
-    return refs
 
 def evaluate_synthetic(graph, config, out_path, diploid):
             # Create maternal and paternal directories
@@ -359,61 +294,6 @@ def evaluate_synthetic(graph, config, out_path, diploid):
         print(f"Eval correctness of edges")
         eval.synthetic_edge_correctness(graph, walks)
 
-def evaluate_real(ref, config, out_path, diploid, threads=16):
-
-    if diploid:
-        print('\nEvaluating diploid assemblies...')
-
-        pat_asm = os.path.join(out_path, '0_assembly_paternal.fasta')
-        pat_report = os.path.join(out_path, 'minigraph_paternal.txt')
-        pat_paf = os.path.join(out_path, 'asm_paternal.paf')
-        pat_phs = os.path.join(out_path, 'phs_paternal.txt')
-
-        mat_asm = os.path.join(out_path, '0_assembly_maternal.fasta')
-        mat_report = os.path.join(out_path, 'minigraph_maternal.txt')
-        mat_paf = os.path.join(out_path, 'asm_maternal.paf')
-        mat_phs = os.path.join(out_path, 'phs_maternal.txt')
-
-        # Evaluate paternal assembly
-        p = eval.run_minigraph(ref['ref_p'], pat_asm, pat_paf, minigraph_path=config['paths']['minigraph_path'], threads=threads)
-        p.wait()
-        p = eval.parse_pafs(ref['idx_p'], pat_report, pat_paf, paf_path=config['paths']['paftools_path'])
-        p.wait()
-        eval.parse_minigraph_for_full(pat_report)
-
-        # Evaluate maternal assembly
-        p = eval.run_minigraph(ref['ref_m'], mat_asm, mat_paf, minigraph_path=config['paths']['minigraph_path'], threads=threads)
-        p.wait()
-        p = eval.parse_pafs(ref['idx_m'], mat_report, mat_paf, paf_path=config['paths']['paftools_path'])
-        p.wait()
-        eval.parse_minigraph_for_full(mat_report)
-
-        # Run YAK for phasing evaluation sequentially
-        # First run maternal YAK evaluation
-        p1 = eval.run_yak(ref['mat_yak'], ref['pat_yak'], mat_asm, mat_phs, yak_path=config['paths']['yak_path'], threads=threads)
-        p1.wait()
-        
-        # Then run paternal YAK evaluation
-        p2 = eval.run_yak(ref['mat_yak'], ref['pat_yak'], pat_asm, pat_phs, yak_path=config['paths']['yak_path'], threads=threads)
-        p2.wait()
-        
-        eval.parse_real_results(mat_report, pat_report, mat_phs, pat_phs)
-        eval.get_LG90(ref['ref_p'], pat_asm)
-        eval.get_LG90(ref['ref_m'], mat_asm)
-
-    else:
-        print('Evaluating...')
-        asm = os.path.join(out_path, f'0_assembly.fasta')
-        report = os.path.join(out_path, 'minigraph.txt')
-        paf = os.path.join(out_path, f'asm.paf')
-        p = eval.run_minigraph(ref['ref'], asm, paf, minigraph_path=config['paths']['minigraph_path'])
-        p.wait()
-        p = eval.parse_pafs(ref['idx'], report, paf, paf_path=config['paths']['paftools_path'])
-        p.wait()
-        #subprocess.run(['paftools.js', 'asmstat', idx, paf], check=True)
-        eval.parse_minigraph_for_full(report)
-        eval.get_LG90(ref['ref'], asm)
-
 
 def main_entry(argv=None):
     import argparse
@@ -434,15 +314,13 @@ def main_entry(argv=None):
     parser.add_argument('--config', type=str, default='configs/config.yml', help='Path to the config file')
     parser.add_argument('--strategy', type=str, default='baseline', help='Strategy for graph reduction')
     
-    parser.add_argument('--threads', type=int, default=16, help='Number of threads for minigraph')
+    # Real evaluation disabled: threads argument removed
 
     # Add dataset and filename arguments similar to decode_nx.py
     parser.add_argument('--dataset', type=str, help='Dataset directory containing dgl_graphs, nx_graphs, etc.')
     parser.add_argument('--filename', type=str, help='Base filename without extension')
     parser.add_argument('--label', action='store_true', default=False, help='Use label information instead of computing scores')
-    parser.add_argument('--ref', type=str, help='Reference key for specific genome references')
-    parser.add_argument('--single_chrom', action='store_true', default=False, help='Process a single chromosome')
-    parser.add_argument('--skip_real_eval', action='store_true', default=False, help='Skip real evaluation')
+    # Real evaluation disabled: ref/single_chrom/skip_real_eval arguments removed
     parser.add_argument('--skip_synthetic_eval', action='store_true', default=False, help='Skip synthetic evaluation')
     parser.add_argument('--skip_decode', action='store_true', default=False, help='Skip decoding')
     parser.add_argument('--ass_out_dir', type=str, default=None, help='Output directory for assemblies')
@@ -628,9 +506,6 @@ def main_entry(argv=None):
 
     if not args.skip_synthetic_eval:
         evaluate_synthetic(nx_graph, config, args.ass_out_dir, diploid)
-    if not args.skip_real_eval:
-        refs = get_refs(args, diploid, args.single_chrom, args.ref)
-        evaluate_real(refs, config, args.ass_out_dir, diploid, threads=args.threads)
 
     print("Done!")
 
