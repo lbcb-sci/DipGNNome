@@ -9,7 +9,6 @@
 <p align="center">
   <img src="dipgnnome_image.png" width="800" title="Framework">
 </p>
-Figure generated with Midjourney.
 
 ## Overview
 
