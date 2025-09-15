@@ -20,6 +20,10 @@
 
 3. **Competitive performance**: We show that a GNN-based assembler can achieve comparable assemblies to state-of-the-art methods while following a fundamentally different, learning-driven paradigm.
 
+## Data
+
+The dataset for DipGNNome is available at this [Google Drive link](https://drive.google.com/file/d/1O6JOp7cuaH5av7qJbawz8LgJ-YDYy6Er/view?usp=drive_link).
+
 ## Architecture
 
 ![DipGNNome Workflow](main_gnnome_dip.png)
